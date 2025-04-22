@@ -163,31 +163,27 @@ service ClusterConfigService {
 ```proto
 // api/proto/teleport/legacy/client/proto/authservice.proto
 
-// ClusterConfigService provides methods to manage cluster configuration resources.
-service ClusterConfigService {
-  // existing messages omitted
+// existing messages omitted
 
-  // EncryptedSessionRecordingChunk is an individual chunk of an encrypted 
-  // session recording .tar file.
-  message EncryptedSessionRecordingChunk {
-    // SessionID the recording relates to.
-    string SessionID = 1;
-    // ChunkIndex is the ordered index applied to the chunk.
-    int64 ChunkIndex = 2;
-    // Chunk is the encrypted chunk of session recording data being uploaded.
-    bytes Chunk = 3;
-  }
+// EncryptedSessionRecordingChunk is an individual chunk of an encrypted 
+// session recording .tar file.
+message EncryptedSessionRecordingChunk {
+  // SessionID the recording relates to.
+  string SessionID = 1;
+  // ChunkIndex is the ordered index applied to the chunk.
+  int64 ChunkIndex = 2;
+  // Chunk is the encrypted chunk of session recording data being uploaded.
+  bytes Chunk = 3;
+}
 
-  message UploadEncryptedSessionRecordingResponse {}
+message UploadEncryptedSessionRecordingResponse {}
 
-  service AuthService {
-    // existing RPCs omitted
+service AuthService {
+  // existing RPCs omitted
 
-    // UploadEncryptedSessionRecording is used to upload encrypted .tar files
-    // containing session recording events into long term storage.
-    rpc UploadEncryptedSessionRecording(stream EncryptedSessionRecordingChunk) returns (UploadEncryptedSessionRecordingResponse);
-    
-  }
+  // UploadEncryptedSessionRecording is used to upload encrypted .tar files
+  // containing session recording events into long term storage.
+  rpc UploadEncryptedSessionRecording(stream EncryptedSessionRecordingChunk) returns (UploadEncryptedSessionRecordingResponse);
 }
 ```
 
