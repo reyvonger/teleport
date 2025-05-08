@@ -138,26 +138,29 @@ message SessionRecordingConfigV2 {
 // api/proto/teleport/recording_encryption/v1/recording_encryption.proto
 
 import "teleport/header/v1/metadata.proto";
+import "teleport/legacy/types/types.proto";
 
 // KeyState represents that possible states a WrappedKey can be in.
 enum KeyState = {
-  // By default a key is active.
-  KEY_STATE_ACTIVE = 0,
+  //  Default KeyState
+  KEY_STATE_UNSPECIFIED = 0;
+  // KEY_STATE_ACTIVE marks a key in good standing.
+  KEY_STATE_ACTIVE = 1;
   // KEY_STATE_ROTATING marks a key as waiting for its owning auth server to
   // rotate it.
-  KEY_STATE_ROTATING = 1,
+  KEY_STATE_ROTATING = 2;
   // KEY_STATE_ROTATED marks a key as fully rotated.
-  KEY_STATE_ROTATED = 2,
+  KEY_STATE_ROTATED = 3;
 }
 
 // WrappedKey wraps a PrivateKey using an asymmetric keypair.
 message WrappedKey {
   // recording_encryption_pair is the asymmetric keypair used to wrap the
   // private key. Expected to be RSA.
-  EncryptionKeyPair recording_encryption_pair = 1;
+  types.EncryptionKeyPair recording_encryption_pair = 1;
   // key_encryption_pair is the asymmetric keypair used with age to encrypt
   // and decrypt filekeys.
-  EncryptionKeyPair key_encryption_pair = 2;
+  types.EncryptionKeyPair key_encryption_pair = 2;
   // state represents whether the WrappedKey is rotating or not
   KeyState state = 3;
 }
@@ -183,7 +186,7 @@ message RecordingEncryption {
   string subkind = 2;
   string version = 3;
   teleport.header.v1.Metadata metadata = 4;
-  EncryptedRecordingConfigSpec spec = 5;
+  RecordingEncryptionSpec spec = 5;
 }
 ```
 
