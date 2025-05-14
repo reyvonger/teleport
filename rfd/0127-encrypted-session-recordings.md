@@ -88,17 +88,16 @@ message EncryptionKeyPair {
   uint32 hash = 4 [(gogoproto.jsontag) = "hash"];
 }
 
-// EncryptionKey is a public key combined with a hash meant to be used during
-// asymmetric encryption.
-message EncryptionKey {
+// AgeEncryptionKey is a Beck32 encoded age X25519 public key used for
+// encrypting session recordings.
+message AgeEncryptionKey {
   bytes public_key = 1 [(gogoproto.jsontag) = "public_key"];
-  uint32 hash = 2 [(gogoproto.jsontag) = "hash"];
 }
 
 // SessionRecordingConfigStatusV2 contains the encryption_keys that should be
 // used during any recording encryption operation.
 message SessionRecordingConfigStatusV2 {
-  repeated EncryptionKey encryption_keys  = 1 [
+  repeated AgeEncryptionKey encryption_keys  = 1 [
     (gogoproto.jsontag) = "encryption_keys"
   ];
 }
@@ -248,9 +247,9 @@ message RotateKeySetResponse {}
 // GetRotationStateRequest
 message GetRotationStateRequest {}
 
-// KeyWithState reports the KeyState for a given public key.
-message EncryptionKeyWithState {
-  // PublicKey is the public encryption key associated with the KeyState.
+// AgeEncryptionKeyWithState reports the KeyState for a given public key.
+message AgeEncryptionKeyWithState {
+  // PublicKey is the Bech32 encoded age X25519 public key associated with the KeyState.
   bytes public_key = 1;
   // KeyState is the state PublicKey is currently in.
   teleport.recordingencryption.v1.KeyState key_state = 2;
@@ -260,7 +259,7 @@ message EncryptionKeyWithState {
 // in the EncryptedSessionRecordingConfig.
 message GetRotationStateResponse {
   // Keys contains the list of currently active public keys along with their status.
-  repeated KeyWithState keys = 1;
+  repeated AgeEncryptionKeyKeyWithState keys = 1;
 }
 
 // CompleteRotationRequest
@@ -282,29 +281,6 @@ message UploadEncryptedRecordingRequest {
 
 // UploadEncryptedRecordingResponse
 message UploadEncryptedRecordingResponse {}
-```
-
-```proto
-// api/proto/teleport/rotated_keys/v1/rotated_keys.proto
-
-import "teleport/header/v1/metadata.proto";
-import "teleport/header/v1/recording_encryption.proto";
-
-// RotatedKeysSpec contains the wrapped keys related to a given public key.
-message RotatedKeysSpec {
-  string public_key = 1;
-  repeated WrappedKey keys = 2;
-}
-
-// RotatedKeys contains a set of rotated, wrapped keys related to a specific
-// public key.
-message RotatedKeys {
-  string kind = 1;
-  string subkind = 2;
-  string version = 3;
-  teleport.header.v1.Metadata metadata = 4;
-  RotatedKeysSpec spec = 5;
-}
 ```
 
 ### Session Recording Modes
