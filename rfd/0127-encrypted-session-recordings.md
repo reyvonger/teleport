@@ -141,8 +141,8 @@ import "teleport/header/v1/metadata.proto";
 import "teleport/legacy/types/types.proto";
 
 // KeyState represents that possible states a WrappedKey can be in.
-enum KeyState = {
-  //  Default KeyState
+enum KeyState {
+  // Default KeyState
   KEY_STATE_UNSPECIFIED = 0;
   // KEY_STATE_ACTIVE marks a key in good standing.
   KEY_STATE_ACTIVE = 1;
@@ -155,20 +155,20 @@ enum KeyState = {
 
 // WrappedKey wraps a PrivateKey using an asymmetric keypair.
 message WrappedKey {
-  // recording_encryption_pair is the asymmetric keypair used to wrap the
+  // RecordingEncryptionPair is the asymmetric keypair used to wrap the
   // private key. Expected to be RSA.
   types.EncryptionKeyPair recording_encryption_pair = 1;
-  // key_encryption_pair is the asymmetric keypair used with age to encrypt
+  // KeyEncryptionPair is the asymmetric keypair used with age to encrypt
   // and decrypt filekeys.
   types.EncryptionKeyPair key_encryption_pair = 2;
-  // state represents whether the WrappedKey is rotating or not
+  // State represents whether the WrappedKey is rotating or not
   KeyState state = 3;
 }
 
 // KeySet contains the list of active and rotated WrappedKeys for a
 // given usage.
 message KeySet {
-  // active_keys is a list of active, wrapped X25519 private keys. There should
+  // AciveKeys is a list of active, wrapped X25519 private keys. There should
   // be at most one wrapped key per auth server using the
   // SessionRecordingConfigV2 resource unless keys are being rotated.
   repeated WrappedKey active_keys = 1;
@@ -180,22 +180,53 @@ message RecordingEncryptionSpec {
   KeySet key_set = 1;
 }
 
+// RecordingEncryptionStatus contains the status of the RecordingEncryption resource.
+message RecordingEncryptionStatus {}
+
 // RecordingEncryption contains cluster state for encrypted session recordings.
 message RecordingEncryption {
   string kind = 1;
-  string subkind = 2;
+  string sub_kind = 2;
   string version = 3;
   teleport.header.v1.Metadata metadata = 4;
   RecordingEncryptionSpec spec = 5;
+  RecordingEncryptionStatus status = 6;
+}
+
+// RotatedKeysSpec contains the wrapped keys related to a given public key.
+message RotatedKeysSpec {
+  string public_key = 1;
+  repeated WrappedKey keys = 2;
+}
+
+// RotatedKeysStatus contains the status of RotatedKeys.
+message RotatedKeysStatus {}
+
+// RotatedKeys contains a set of rotated, wrapped keys related to a specific
+// public key.
+message RotatedKeys {
+  string kind = 1;
+  string sub_kind = 2;
+  string version = 3;
+  teleport.header.v1.Metadata metadata = 4;
+  RotatedKeysSpec spec = 5;
+  RotatedKeysStatus status = 6;
 }
 ```
 
 ```proto
 // api/proto/teleport/recording_encryption/v1/recording_encryption_service.proto
+syntax = "proto3";
+
+package teleport.recordingencryption.v1;
+
+import "teleport/recordingencryption/v1/recording_encryption.proto";
+
+option go_package = "github.com/gravitational/teleport/api/gen/proto/go/teleport/recordingencryption/v1;recordingencryptionv1";
 
 // RecordingEncryption provides methods to manage cluster encryption
 // configuration resources.
-service RecordingEncryption {
+service RecordingEncryptionService {
   // RotateKeySets rotates the keys associated with the given keysets within
   // the encryption configuration.
   rpc RotateKeySet(RotateKeySetRequest) returns (RotateKeySetResponse);
@@ -205,33 +236,51 @@ service RecordingEncryption {
   rpc CompleteRotation(CompleteRotationRequest) returns (CompleteRotationResponse);
   // UploadEncryptedRecording is used to upload encrypted .tar files
   // containing session recording events into long term storage.
-  rpc UploadEncryptedRecording(stream EncryptedRecordingPart) returns (UploadEncryptedRecordingResponse);
+  rpc UploadEncryptedRecording(stream UploadEncryptedRecordingRequest) returns (UploadEncryptedRecordingResponse);
 }
 
+// RotateKeySetRequest
 message RotateKeySetRequest {}
+
+// RotateKeySetResponse
 message RotateKeySetResponse {}
 
+// GetRotationStateRequest
 message GetRotationStateRequest {}
+
+// KeyWithState reports the KeyState for a given public key.
+message EncryptionKeyWithState {
+  // PublicKey is the public encryption key associated with the KeyState.
+  bytes public_key = 1;
+  // KeyState is the state PublicKey is currently in.
+  teleport.recordingencryption.v1.KeyState key_state = 2;
+}
+
 // GetRotationStateResponse contains the current KeyState of all WrappedKeys
 // in the EncryptedSessionRecordingConfig.
 message GetRotationStateResponse {
-  repeated KeyState key_states = 1;
+  // Keys contains the list of currently active public keys along with their status.
+  repeated KeyWithState keys = 1;
 }
 
+// CompleteRotationRequest
 message CompleteRotationRequest {}
+
+// CompleteRotationResponse
 message CompleteRotationResponse {}
 
-// EncryptedRecordingPart is an individual part of an encrypted session
+// UploadEncryptedRecordingRequest is an individual part of an encrypted session
 // recording .tar file.
-message EncryptedRecordingPart {
+message UploadEncryptedRecordingRequest {
   // SessionID the recording relates to.
-  string SessionID = 1;
+  string session_id = 1;
   // PartIndex is the ordered index applied to the chunk.
-  int64 PartIndex = 2;
+  int64 part_index = 2;
   // Part is the encrypted part of session recording data being uploaded.
-  bytes Part = 3;
+  bytes part = 3;
 }
 
+// UploadEncryptedRecordingResponse
 message UploadEncryptedRecordingResponse {}
 ```
 
@@ -488,9 +537,11 @@ need to be rotated, they will essentially repeat the key generation steps:
 - Confirm the unfulfilled `WrappedKey` is now complete and mark the old
   `WrappedKey.State` as `rotated`.
 
-Once all auth servers have finished rotating their keys, rotation is complete.
-Completion is confirmed when the `State` field of all `WrappedKeys` in the
-active keys list are set to `active`.
+Once all auth servers have finished rotating their keys, rotation is finished.
+This is confirmed when the `State` field of all `WrappedKeys` in the active
+keys list are set to `active` and `rotated`. Completing the rotation is a
+manual step that is only possible after a minimum amount of time has passed.
+This will emulate how CA rotations are performed.
 
 It's worth noting that during the waiting period, the keys scheduled for
 rotation are still included as recipients during encryption. Which means
@@ -516,6 +567,21 @@ This command issues a request to the `GetRotationState` RPC to get the list of
 key states for all active keys. Rotation is in progress if at least one key
 is marked as `rotating`. It is pending completion when all keys are marked
 as `rotated` and complete when all keys are marked as `active`.
+
+A rotation can be cancelled and rolled back using the `rollback` sub command.
+
+```bash
+tctl recordings encryption rotate rollback
+```
+
+A rotation can be completed using the `complete` subcommand.
+
+```bash
+tctl recordings encryption rotate complete
+```
+
+It will move all keys marked as `rotated` state to a `RotatedKeys` resource
+keyed on the recording encryption public key they all related to.
 
 ### Security
 
@@ -552,6 +618,20 @@ tctl recordings encryption rotate
 tctl recordings encryption rotate --status
 
 "Remaining keys to rotate: 3"
+```
+
+### Teleport admin cancelling an ongoing rotation
+
+```bash
+tctl recordings encryption rotate rollback
+```
+
+### Teleport admin completing a finished rotation
+
+```bash
+tctl recordings encryption rotate complete
+
+"Rotation complete"
 ```
 
 ### Teleport admin replaying encrypted session recording using `tsh`
