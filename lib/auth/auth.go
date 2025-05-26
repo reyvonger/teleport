@@ -127,6 +127,7 @@ import (
 	"github.com/gravitational/teleport/lib/srv/db/common/role"
 	"github.com/gravitational/teleport/lib/sshca"
 	"github.com/gravitational/teleport/lib/sshutils"
+	"github.com/gravitational/teleport/lib/summarizer"
 	"github.com/gravitational/teleport/lib/terraformcloud"
 	"github.com/gravitational/teleport/lib/tlsca"
 	"github.com/gravitational/teleport/lib/tpm"
@@ -1225,6 +1226,9 @@ func (a *Server) SetSAMLService(svc SAMLService) {
 // will override the previous registration.
 func (a *Server) SetOIDCService(svc OIDCService) {
 	a.oidcAuthService = svc
+}
+
+func (a *Server) SetSummarizer(s summarizer.Summarizer) {
 }
 
 // SetLicense sets the license
