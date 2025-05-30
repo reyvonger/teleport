@@ -93,6 +93,7 @@ type RecordingEncryptionManager interface {
 	services.RecordingEncryption
 	recordingencryption.DecryptionKeyFinder
 	ResolveRecordingEncryption(ctx context.Context) (*recordingencryptionv1pb.RecordingEncryption, error)
+	SetCache(cache recordingencryption.Cache)
 }
 
 // InitConfig is auth server init config
