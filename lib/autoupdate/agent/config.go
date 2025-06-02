@@ -234,7 +234,7 @@ func validateConfigSpec(spec *UpdateSpec, override OverrideConfig) error {
 		spec.SELinuxSSH = override.SELinuxSSH
 	}
 	if spec.SELinuxSSH && runtime.GOOS != "linux" {
-		return trace.Errorf("SELinux is only supported on Linux")
+		return trace.BadParameter("SELinux is only supported on Linux")
 	}
 	return nil
 }

@@ -46,6 +46,7 @@ import (
 	"github.com/gravitational/teleport/lib/client/debug"
 	libdefaults "github.com/gravitational/teleport/lib/defaults"
 	"github.com/gravitational/teleport/lib/modules"
+	"github.com/gravitational/teleport/lib/selinux"
 	libutils "github.com/gravitational/teleport/lib/utils"
 )
 
@@ -1059,14 +1060,11 @@ func (u *Updater) Setup(ctx context.Context, path string, installSELinux, restar
 	// installed but is not supposed to be installed now.
 	var removeSELinux bool
 	if !installSELinux {
-		cfg, err := readConfig(u.UpdateConfigFile)
+		installed, err := selinux.ModuleInstalled()
 		if err != nil {
-			return trace.Wrap(err, "failed to read %s", updateConfigName)
+			return trace.Wrap(err, "failed to check if SELinux module is installed")
 		}
-		if err := validateConfigSpec(&cfg.Spec, OverrideConfig{}); err != nil {
-			return trace.Wrap(err)
-		}
-		removeSELinux = cfg.Spec.SELinuxSSH
+		removeSELinux = installed
 	}
 
 	// Setup teleport-updater configuration and sync systemd.

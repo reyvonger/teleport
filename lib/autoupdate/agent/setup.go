@@ -109,6 +109,8 @@ ExecStart=-/bin/echo "The teleport-upgrade script has been disabled by teleport-
 `
 )
 
+// standard Makefile included in 'selinux-policy-devel' RPM package
+// used to build SELinux modules
 const selinuxMakefile = "/usr/share/selinux/devel/Makefile"
 
 type confParams struct {
@@ -293,13 +295,6 @@ func (ns *Namespace) Setup(ctx context.Context, path string, installSELinux, rem
 	return nil
 }
 
-type filePaths struct {
-	InstallDir     string
-	DataDir        string
-	ConfigPath     string
-	UpgradeUnitDir string
-}
-
 func (ns *Namespace) installSELinux(ctx context.Context) error {
 	ns.log.InfoContext(ctx, "Installing SELinux module.")
 
@@ -307,10 +302,9 @@ func (ns *Namespace) installSELinux(ctx context.Context) error {
 		return trace.Wrap(err)
 	}
 
-	// Build the SELinux module in a temp dir, and then install it.
-	fcTempl, err := template.New("selinux file contexts").Parse(selinux.FileContextsTemplate())
+	fileCtxs, err := selinux.FileContexts(ns.Dir(), ns.dataDir, ns.configFile)
 	if err != nil {
-		return trace.Wrap(err, "failed to parse file contexts template")
+		return trace.Wrap(err)
 	}
 
 	tempDir, err := os.MkdirTemp("", "selinux-*")
@@ -319,27 +313,12 @@ func (ns *Namespace) installSELinux(ctx context.Context) error {
 	}
 	defer os.RemoveAll(tempDir)
 
-	fcFile, err := os.Create(filepath.Join(tempDir, "teleport.fc"))
+	err = os.WriteFile(filepath.Join(tempDir, "teleport_ssh.fc"), []byte(fileCtxs), 0440)
 	if err != nil {
-		return trace.Wrap(err, "failed to create temporary file")
+		return trace.Wrap(err, "failed to write module source file")
 	}
 
-	// Generate a file specifying the locations of important dirs so SELinux
-	// will allow Teleport SSH to be able to access them.
-	err = fcTempl.Execute(fcFile, filePaths{
-		InstallDir:     ns.Dir(),
-		DataDir:        ns.dataDir,
-		ConfigPath:     ns.configFile,
-		UpgradeUnitDir: versioncontrol.UnitConfigDir,
-	})
-	if err != nil {
-		return trace.Wrap(err, "failed to expand file contexts template")
-	}
-	if err := fcFile.Sync(); err != nil {
-		return trace.Wrap(err, "failed to synchronize file")
-	}
-
-	err = os.WriteFile(filepath.Join(tempDir, "teleport.te"), selinux.ModuleSource(), 0440)
+	err = os.WriteFile(filepath.Join(tempDir, "teleport_ssh.te"), []byte(selinux.ModuleSource()), 0440)
 	if err != nil {
 		return trace.Wrap(err, "failed to write module source file")
 	}
@@ -352,12 +331,12 @@ func (ns *Namespace) installSELinux(ctx context.Context) error {
 	}
 
 	// Build and install the module, then ensure files are properly labeled.
-	_, err = cmd.Run(ctx, "make", "-f", selinuxMakefile, "teleport.pp")
+	_, err = cmd.Run(ctx, "make", "-f", selinuxMakefile, "teleport_ssh.pp")
 	if err != nil {
 		return trace.Wrap(err, "failed to build module")
 	}
 
-	_, err = cmd.Run(ctx, "semodule", "-i", "teleport.pp")
+	_, err = cmd.Run(ctx, "semodule", "-i", "teleport_ssh.pp")
 	if err != nil {
 		return trace.Wrap(err, "failed to install module")
 	}
@@ -389,15 +368,15 @@ func (ns *Namespace) createAndLabelDirs(ctx context.Context, cmd localExec) erro
 	if libutils.FileExists(ns.configFile) {
 		dirsToLabel = append(dirsToLabel, filepath.Dir(ns.configFile))
 	} else {
-		confFile, err := os.OpenFile(ns.configFile, os.O_RDONLY|os.O_CREATE, 0o666)
+		confFile, err := os.OpenFile(ns.configFile, os.O_RDONLY|os.O_CREATE|os.O_EXCL, 0o640)
 		if err != nil {
-			ns.log.WarnContext(ctx, "Failed to create teleport.yaml.", errorKey, err)
-			ns.log.WarnContext(ctx, "You will likely need to create teleport.yaml and re-run 'teleport-update enable' for Teleport SSH to work correctly with SELinux.")
+			ns.log.WarnContext(ctx, "Failed to create teleport.yaml.", errorKey, err, "path", ns.configFile)
+			ns.log.WarnContext(ctx, "You will likely need to create teleport.yaml and re-run 'sudo teleport-update enable' for Teleport SSH to work correctly with SELinux.")
 		} else {
 			confFile.Close()
 			dirsToLabel = append(dirsToLabel, filepath.Dir(ns.configFile))
 			ns.log.WarnContext(ctx, "Created an empty teleport.yaml.", "path", ns.configFile)
-			ns.log.WarnContext(ctx, "If you move or copy another file onto this file you will likely need to re-run 'teleport-update enable' for Teleport SSH to work correctly with SELinux.")
+			ns.log.WarnContext(ctx, "If you move or copy another file onto this file you will likely need to re-run 'sudo teleport-update enable' for Teleport SSH to work correctly with SELinux.")
 		}
 	}
 
@@ -423,7 +402,7 @@ func (ns *Namespace) removeSELinux(ctx context.Context) error {
 		OutLevel: slog.LevelDebug,
 	}
 
-	removeOutput, err := cmd.Output(ctx, "semodule", "-r", "teleport")
+	removeOutput, err := cmd.Output(ctx, "semodule", "-r", "teleport_ssh")
 	if err != nil {
 		// If the module is not installed, return without an error.
 		if bytes.Contains(removeOutput, []byte("(No such file or directory).")) {
@@ -441,10 +420,6 @@ func (ns *Namespace) removeSELinux(ctx context.Context) error {
 }
 
 func (ns *Namespace) checkSELinux(ctx context.Context, installing bool) error {
-	if !libutils.IsDir("/sys/fs/selinux") {
-		return trace.Errorf("SELinux does not appear to be installed or is not configured correctly")
-	}
-
 	// Ensure necessary files and binaries exist for building a module and
 	// inform the user what packages need to be installed if they can't be
 	// found.
