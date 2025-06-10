@@ -325,7 +325,7 @@ and Kubernetes clusters with the `env:dev` label:
 
 ```yaml
 kind: role
-version: v7
+version: v8
 metadata:
   name: developer
 spec:
@@ -335,6 +335,37 @@ spec:
       'env': ['staging', 'dev']
     kubernetes_labels:
       'env': 'dev'
+    kubernetes_resources:
+      - kind: "*"
+        api_group: "*"
+        namespace: "*"
+        name: "*"
+        verbs: ["*"]
+    app_labels:
+      'type': ['monitoring']
+  # The deny rules always override allow rules.
+  deny:
+    # deny access to any Node, database, app or Kubernetes cluster labeled
+    # as prod as any user.
+    node_labels:
+      'env': 'prod'
+    kubernetes_labels:
+      'env': 'prod'
+    kubernetes_resources:
+      - kind: "namespaces"
+        name: "prod"
+    db_labels:
+      'env': 'prod'
+    app_labels:
+      'env': 'prod'
+```
+
+Create a role using the `tctl create -f` command:
+
+```code
+$ tctl create -f /tmp/interns.yaml
+# Get a list of all roles in the system
+$ tctl get roles --format text
 ```
 
 ### RBAC for specific kinds of resources

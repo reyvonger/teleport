@@ -20,21 +20,41 @@ import React from 'react';
 
 import { Icon } from 'design/Icon';
 import { ResourceIconName } from 'design/ResourceIcon';
-import { NodeSubKind } from 'shared/services';
+import { AppSubKind, NodeSubKind } from 'shared/services';
 import { DbProtocol } from 'shared/services/databases';
 
 import { ResourceLabel } from 'teleport/services/agents';
-import { AppSubKind, PermissionSet } from 'teleport/services/apps';
+import { AppMCP, PermissionSet } from 'teleport/services/apps';
 
-/**
- * status == '' is a result of an older agent that does not
- * support the health check feature.
- */
-export type ResourceStatus = 'healthy' | 'unhealthy' | 'unknown' | '';
+// "mixed" indicates the resource has a mix of health
+// statuses. This can happen when multiple agents proxy the same resource.
+export type ResourceHealthStatus =
+  | 'healthy'
+  | 'unhealthy'
+  | 'unknown'
+  | 'mixed';
+
+const resourceHealthStatuses = new Set<ResourceHealthStatus>([
+  'healthy',
+  'unhealthy',
+  'unknown',
+  'mixed',
+]);
+
+export function isResourceHealthStatus(
+  status: unknown
+): status is ResourceHealthStatus {
+  return (
+    typeof status === 'string' &&
+    resourceHealthStatuses.has(status as ResourceHealthStatus)
+  );
+}
 
 export type ResourceTargetHealth = {
-  status: ResourceStatus;
-  reason?: string;
+  status: ResourceHealthStatus;
+  // additional information meant for user.
+  message?: string;
+  error?: string;
 };
 
 export type UnifiedResourceApp = {
@@ -50,6 +70,7 @@ export type UnifiedResourceApp = {
   requiresRequest?: boolean;
   subKind?: AppSubKind;
   permissionSets?: PermissionSet[];
+  mcp?: AppMCP;
 };
 
 export interface UnifiedResourceDatabase {
@@ -140,6 +161,7 @@ export type UnifiedResourcesQueryParams = {
     dir: 'ASC' | 'DESC';
   };
   pinnedOnly?: boolean;
+  statuses?: ResourceHealthStatus[];
   // TODO(bl-nero): Remove this once filters are expressed as advanced search.
   kinds?: string[];
   includedResourceMode?: IncludedResourceMode;
@@ -156,7 +178,7 @@ export interface UnifiedResourceViewItem {
   cardViewProps: CardViewSpecificProps;
   listViewProps: ListViewSpecificProps;
   requiresRequest?: boolean;
-  status?: ResourceStatus;
+  status?: ResourceHealthStatus;
 }
 
 export enum PinningSupport {
@@ -237,3 +259,17 @@ export type ResourceViewProps = {
   }[];
   expandAllLabels: boolean;
 };
+
+/**
+ * DatabaseServer (db_server) describes a database heartbeat signal
+ * reported from an agent (db_service) that is proxying
+ * the database.
+ */
+export type DatabaseServer = {
+  kind: 'db_server';
+  hostname: string;
+  hostId: string;
+  targetHealth?: ResourceTargetHealth;
+};
+
+export type SharedResourceServer = DatabaseServer;
