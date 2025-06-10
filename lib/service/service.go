@@ -2087,19 +2087,19 @@ func (process *TeleportProcess) initAuthService() error {
 		ClusterName: clusterName,
 	})
 
-	if cfg.ClusterConfiguration == nil {
-		clusterConfig, err := local.NewClusterConfigurationService(b)
+	clusterConfig := cfg.ClusterConfiguration
+	if clusterConfig == nil {
+		clusterConfig, err = local.NewClusterConfigurationService(b)
 		if err != nil {
 			return trace.Wrap(err)
 		}
-		cfg.ClusterConfiguration = clusterConfig
 	}
 
 	// create keystore
 	keystoreOpts := &keystore.Options{
 		HostUUID:             cfg.HostUUID,
 		ClusterName:          cn,
-		AuthPreferenceGetter: cfg.ClusterConfiguration,
+		AuthPreferenceGetter: clusterConfig,
 		FIPS:                 cfg.FIPS,
 	}
 
@@ -2132,17 +2132,24 @@ func (process *TeleportProcess) initAuthService() error {
 		Backend:  localRecordingEncryption,
 		KeyStore: keyStore,
 		Logger:   logger,
+		LockConfig: backend.RunWhileLockedConfig{
+			LockConfiguration: backend.LockConfiguration{
+				Backend:            process.backend,
+				TTL:                time.Second * 30,
+				LockNameComponents: []string{"recording_encryption"},
+			},
+		},
 	})
 	if err != nil {
 		return trace.Wrap(err)
 	}
 
-	cfg.ClusterConfiguration = recordingencryption.NewClusterConfigService(cfg.ClusterConfiguration, recordingEncryptionManager)
+	clusterConfig = recordingencryption.NewClusterConfigService(clusterConfig, recordingEncryptionManager)
 	var emitter apievents.Emitter
 	var streamer events.Streamer
 	var uploadHandler events.MultipartHandler
 	var externalAuditStorage *externalauditstorage.Configurator
-	encryptedIO := recordingencryption.NewEncryptedIO(cfg.ClusterConfiguration, recordingEncryptionManager)
+	encryptedIO := recordingencryption.NewEncryptedIO(clusterConfig, recordingEncryptionManager)
 
 	// create the audit log, which will be consuming (and recording) all events
 	// and recording all sessions.
@@ -2249,9 +2256,6 @@ func (process *TeleportProcess) initAuthService() error {
 
 		traceClt = clt
 	}
-	if err != nil {
-		return trace.Wrap(err)
-	}
 
 	// Environment variable for disabling the check major version upgrade check and overrides
 	// latest known version in backend.
@@ -2265,7 +2269,7 @@ func (process *TeleportProcess) initAuthService() error {
 			VersionStorage:          process.storage,
 			SkipVersionCheck:        cfg.SkipVersionCheck || skipVersionCheckFromEnv,
 			Authority:               cfg.Keygen,
-			ClusterConfiguration:    cfg.ClusterConfiguration,
+			ClusterConfiguration:    clusterConfig,
 			AutoUpdateService:       cfg.AutoUpdateService,
 			ClusterAuditConfig:      cfg.Auth.AuditConfig,
 			ClusterNetworkingConfig: cfg.Auth.NetworkingConfig,
@@ -2292,6 +2296,7 @@ func (process *TeleportProcess) initAuthService() error {
 			AuditLog:                process.auditLog,
 			CipherSuites:            cfg.CipherSuites,
 			KeyStore:                keyStore,
+			KeyStoreConfig:          cfg.Auth.KeyStore,
 			Emitter:                 checkingEmitter,
 			Streamer:                events.NewReportingStreamer(streamer, process.Config.Testing.UploadEventsC),
 			TraceClient:             traceClt,
@@ -2679,16 +2684,8 @@ func (process *TeleportProcess) initAuthService() error {
 
 	recordingEncryptionWatchCfg := recordingencryption.WatchConfig{
 		Events:        authServer.Services,
-		Resolver:      authServer,
+		Resolver:      recordingEncryptionManager,
 		ClusterConfig: authServer,
-		LockConfig: &backend.RunWhileLockedConfig{
-			LockConfiguration: backend.LockConfiguration{
-				Backend:            b,
-				LockNameComponents: []string{"resolve_recording_encryption"},
-				TTL:                30 * time.Second,
-			},
-			RefreshLockInterval: 20 * time.Second,
-		},
 	}
 
 	recordingEncryptionWatcher, err := recordingencryption.NewWatcher(recordingEncryptionWatchCfg)
