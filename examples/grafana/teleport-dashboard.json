@@ -2989,25 +2989,19 @@
         "type": "query"
       },
       {
-        "current": {
-          "text": "instance",
-          "value": "instance"
-        },
+        "current": {},
+        "definition": "label_names(teleport_build_info)",
         "name": "metrics_per",
-        "options": [
-          {
-            "selected": true,
-            "text": "instance",
-            "value": "instance"
-          },
-          {
-            "selected": false,
-            "text": "pod",
-            "value": "pod"
-          }
-        ],
-        "query": "instance,pod",
-        "type": "custom"
+        "options": [],
+        "query": {
+          "qryType": 0,
+          "query": "label_names(teleport_build_info)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "/(instance|pod)/",
+        "sort": 2,
+        "type": "query"
       },
       {
         "allValue": "",
