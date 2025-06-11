@@ -232,12 +232,12 @@ func (ns *Namespace) Init() (lockFile string, err error) {
 
 // Setup installs service and timer files for the teleport-update binary.
 // Afterwords, Setup reloads systemd and enables the timer with --now.
-func (ns *Namespace) Setup(ctx context.Context, path string, installSELinux, removeSELinux bool) error {
+func (ns *Namespace) Setup(ctx context.Context, path string, installSELinux bool) error {
 	if installSELinux {
 		if err := ns.installSELinux(ctx); err != nil {
 			ns.log.WarnContext(ctx, "Failed to install SELinux module.", errorKey, err)
 		}
-	} else if removeSELinux {
+	} else {
 		if err := ns.removeSELinux(ctx); err != nil {
 			ns.log.WarnContext(ctx, "Failed to remove SELinux module.", errorKey, err)
 		}
@@ -390,6 +390,15 @@ func (ns *Namespace) createAndLabelDirs(ctx context.Context, cmd localExec) erro
 }
 
 func (ns *Namespace) removeSELinux(ctx context.Context) error {
+	installed, err := selinux.ModuleInstalled()
+	if err != nil {
+		return trace.Wrap(err, "failed to check if SELinux module is installed")
+	}
+	if !installed {
+		ns.log.DebugContext(ctx, "SELinux module is not installed.")
+		return nil
+	}
+
 	ns.log.InfoContext(ctx, "Removing SELinux module.")
 
 	if err := ns.checkSELinux(ctx, false); err != nil {
@@ -449,8 +458,12 @@ func (ns *Namespace) checkSELinux(ctx context.Context, installing bool) error {
 }
 
 // Teardown removes all traces of the auto-updater, including its configuration.
-func (ns *Namespace) Teardown(ctx context.Context, removeSELinux bool) error {
-	if removeSELinux {
+func (ns *Namespace) Teardown(ctx context.Context) error {
+	modInstalled, err := selinux.ModuleInstalled()
+	if err != nil {
+		return trace.Wrap(err, "failed to check if SELinux module is installed")
+	}
+	if modInstalled {
 		if err := ns.removeSELinux(ctx); err != nil {
 			ns.log.WarnContext(ctx, "Failed to remove SELinux module.", errorKey, err)
 		}

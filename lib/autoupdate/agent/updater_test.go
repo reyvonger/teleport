@@ -845,7 +845,7 @@ func TestUpdater_Update(t *testing.T) {
 				setupCalls++
 				return tt.setupErr
 			}
-			updater.SetupNamespace = func(_ context.Context, path string, _, _ bool) error {
+			updater.SetupNamespace = func(_ context.Context, path string, _ bool) error {
 				revertSetupCalls++
 				return nil
 			}
@@ -1382,7 +1382,7 @@ func TestUpdater_Remove(t *testing.T) {
 					return tt.processActive, tt.isActiveErr
 				},
 			}
-			updater.TeardownNamespace = func(_ context.Context, _ bool) error {
+			updater.TeardownNamespace = func(_ context.Context) error {
 				teardownCalls++
 				return nil
 			}
@@ -1728,7 +1728,7 @@ func TestUpdater_Install(t *testing.T) {
 				UpdateSpec: UpdateSpec{
 					SELinuxSSH: true,
 				},
-				SELinuxChanged: true,
+				SELinuxSSHChanged: true,
 			},
 
 			installedRevision: NewRevision("16.3.0", 0),
@@ -1853,12 +1853,11 @@ func TestUpdater_Install(t *testing.T) {
 				restarted = reload
 				return tt.setupErr
 			}
-			updater.SetupNamespace = func(_ context.Context, path string, installSELinux bool, removeSELinux bool) error {
+			updater.SetupNamespace = func(_ context.Context, path string, installSELinux bool) error {
 				revertSetupCalls++
 				if installSELinux {
 					selinuxInstalls++
-				}
-				if removeSELinux {
+				} else {
 					selinuxRemovals++
 				}
 				return nil
@@ -2108,7 +2107,7 @@ func TestUpdater_Setup(t *testing.T) {
 					return tt.present, tt.presentErr
 				},
 			}
-			updater.SetupNamespace = func(_ context.Context, path string, installSELinux, removeSELinux bool) error {
+			updater.SetupNamespace = func(_ context.Context, path string, installSELinux bool) error {
 				require.Equal(t, "test", path)
 				require.Equal(t, tt.installSELinux, installSELinux)
 				return tt.setupErr

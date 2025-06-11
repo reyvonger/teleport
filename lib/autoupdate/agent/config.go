@@ -230,7 +230,7 @@ func validateConfigSpec(spec *UpdateSpec, override OverrideConfig) error {
 	if override.Pinned {
 		spec.Pinned = true
 	}
-	if override.SELinuxChanged {
+	if override.SELinuxSSHChanged {
 		spec.SELinuxSSH = override.SELinuxSSH
 	}
 	if spec.SELinuxSSH && runtime.GOOS != "linux" {
