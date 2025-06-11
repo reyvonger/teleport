@@ -2940,6 +2940,11 @@
         "allowCustomValue": false,
         "current": {},
         "definition": "label_values(teleport_build_info,job)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "description": "Filter metrics based on prometheus' `job` label.",
         "includeAll": true,
         "name": "teleport_job",
         "options": [],
@@ -2956,6 +2961,10 @@
         "allowCustomValue": false,
         "current": {},
         "definition": "{__name__=~\"backend_.*_requests_total\",namespace=\"$namespace\", component=\"backend\", job=~\"$teleport_job\"}",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
         "hide": 2,
         "includeAll": true,
         "name": "backend_metrics",
@@ -2974,6 +2983,10 @@
         "allowCustomValue": false,
         "current": {},
         "definition": "{__name__=~\"backend_.*_requests_total\",namespace=\"$namespace\", component=\"cache\", job=~\"$teleport_job\"}",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
         "hide": 2,
         "includeAll": true,
         "name": "cache_metrics",
@@ -2991,6 +3004,11 @@
       {
         "current": {},
         "definition": "label_names(teleport_build_info)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "description": "For per-instance metrics show metrics based on `pod` label if available, otherwise use `instance` label.",
         "name": "metrics_per",
         "options": [],
         "query": {
@@ -3008,6 +3026,11 @@
         "allowCustomValue": false,
         "current": {},
         "definition": "label_values(teleport_build_info,namespace)",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "description": "Kubernetes namespace selector. Available only for Kubernetes deployments.",
         "includeAll": false,
         "name": "namespace",
         "options": [],
