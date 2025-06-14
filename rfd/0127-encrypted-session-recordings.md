@@ -1,6 +1,6 @@
 ---
 authors: Alan Parra (alan.parra@goteleport.com), Erik Tate (erik.tate@goteleport.com)
-state: draft
+state: in development
 ---
 
 # RFD 127 - Encrypted Session Recordings
@@ -78,17 +78,17 @@ configuration found [here](https://goteleport.com/docs/admin-guides/deploy-a-clu
 message EncryptionKeyPair {
   // public_key is the public encryption key.
   bytes public_key = 1 [(gogoproto.jsontag) = "public_key"];
-  // private_key is the private decryption key.
+  // PrivateKey is the private decryption key.
   bytes private_key = 2 [(gogoproto.jsontag) = "private_key"];
-  // private_key_type is the type of the private_key.
+  // PrivateKeyType is the type of the private_key.
   PrivateKeyType private_key_type = 3 [(gogoproto.jsontag) = "private_key_type"];
-  // hash is the hash function to use during encryption/decryption operations.
+  // Hash is the hash function to use during encryption/decryption operations.
   // It maps directly to the possible values of crypto.Hash in the go crypto
   // package.
   uint32 hash = 4 [(gogoproto.jsontag) = "hash"];
 }
 
-// AgeEncryptionKey is a Beck32 encoded age X25519 public key used for
+// AgeEncryptionKey is a Bech32 encoded age X25519 public key used for
 // encrypting session recordings.
 message AgeEncryptionKey {
   bytes public_key = 1 [(gogoproto.jsontag) = "public_key"];
@@ -223,26 +223,32 @@ import "teleport/recordingencryption/v1/recording_encryption.proto";
 
 option go_package = "github.com/gravitational/teleport/api/gen/proto/go/teleport/recordingencryption/v1;recordingencryptionv1";
 
-// RecordingEncryption provides methods to manage cluster encryption
-// configuration resources.
+// RecordingEncryption provides methods for rotating key pairs associated with
+// encrypting session recordings and uploading encrypted recordings captures in an
+// async recording mode.
 service RecordingEncryptionService {
-  // RotateKeySets rotates the keys associated with the given keysets within
-  // the encryption configuration.
-  rpc RotateKeySet(RotateKeySetRequest) returns (RotateKeySetResponse);
+  // RotateRecordingEncryptionKey rotates the key pair used for encrypting session
+  // recording data.
+  rpc RotateRecordingEncryptionKey(RotateRecordingEncryptionKeyRequest) returns (RotateRecordingEncryptionKeyResponse);
   // GetRotationState returns whether or not a key rotation is in progress.
   rpc GetRotationState(GetRotationStateRequest) returns (GetRotationStateResponse);
   // CompleteRotation moves rotated keys out of the active set.
   rpc CompleteRotation(CompleteRotationRequest) returns (CompleteRotationResponse);
-  // UploadEncryptedRecording is used to upload encrypted .tar files
-  // containing session recording events into long term storage.
-  rpc UploadEncryptedRecording(stream UploadEncryptedRecordingRequest) returns (UploadEncryptedRecordingResponse);
+
+  // CreateUpload begins a multipart upload for an encrypted recording. The
+  // returned upload ID should be used while uploading parts.
+  rpc CreateUpload(CreateUploadRequest) returns (CreateUploadResponse);
+  // UploadPart uploads a part to the given upload ID.
+  rpc UploadPart(UploadPartRequest) returns (UploadPartResponse);
+  // CompleteUploadRequest marks a multipart upload as complete.
+  rpc CompleteUpload(CompleteUploadRequest) returns (CompleteUploadResponse);
 }
 
-// RotateKeySetRequest
-message RotateKeySetRequest {}
+// RotateRecordingEncryptionKeyRequest
+message RotateRecordingEncryptionKeyRequest {}
 
-// RotateKeySetResponse
-message RotateKeySetResponse {}
+// RotateRecordingEncryptionKeyResponse
+message RotateRecordingEncryptionKeyResponse {}
 
 // GetRotationStateRequest
 message GetRotationStateRequest {}
@@ -255,11 +261,11 @@ message AgeEncryptionKeyWithState {
   teleport.recordingencryption.v1.KeyState key_state = 2;
 }
 
-// GetRotationStateResponse contains the current KeyState of all WrappedKeys
-// in the EncryptedSessionRecordingConfig.
+// GetRotationStateResponse returns whether or not a key rotation is in
+// progress.
 message GetRotationStateResponse {
-  // Keys contains the list of currently active public keys along with their status.
-  repeated AgeEncryptionKeyKeyWithState keys = 1;
+  // State represents whether or not a recording key rotation is in progress.
+  teleport.recordingencryption.v1.KeyState state = 1;
 }
 
 // CompleteRotationRequest
@@ -268,19 +274,59 @@ message CompleteRotationRequest {}
 // CompleteRotationResponse
 message CompleteRotationResponse {}
 
-// UploadEncryptedRecordingRequest is an individual part of an encrypted session
-// recording .tar file.
-message UploadEncryptedRecordingRequest {
-  // SessionID the recording relates to.
+// An Upload represents a multipart upload for an encrypted session.
+message Upload {
+  // UploadID identifies an upload for a given encrypted session.
+  string upload_id = 1;
+  // SessionID of the associated session.
+  string session_id = 2;
+  // InitiatedAt captures the time that the multipart upload was initiated.
+  google.protobuf.Timestamp initiated_at = 3;
+}
+
+// CreateUploadRequest contains the session ID to be used while initializing the upload.
+message CreateUploadRequest {
+  // SessionID associated with the recording being uploaded.
   string session_id = 1;
-  // PartIndex is the ordered index applied to the chunk.
-  int64 part_index = 2;
+}
+
+// CreateUploadResponse contains the upload ID to be used when uploading parts.
+message CreateUploadResponse {
+  // Upload represents an encrypted session upload.
+  Upload upload = 1;
+}
+
+// UploadPartRequest is an indivdual part to be uploaded.
+message UploadPartRequest {
+  // Upload represents the encrypted session to upload the part to.
+  Upload upload = 1;
+  // PartNumber is the ordered index applied to the part.
+  int64 part_number = 2;
   // Part is the encrypted part of session recording data being uploaded.
   bytes part = 3;
 }
 
-// UploadEncryptedRecordingResponse
-message UploadEncryptedRecordingResponse {}
+// UploadPartResponse contains the part index that was uploaded with its
+// associated e-tag.
+message UploadPartResponse {
+  // PartIndex is the ordered index applied to the part.
+  int64 part_number = 1;
+  // ETag is a part e-tag.
+  string e_tag = 2;
+  // LastModified captures the timestamp of the most recent modification of this part (if available)
+  google.protobuf.Timestamp last_modified = 3;
+}
+
+// CompleteUploadRequest marks a multipart upload as complete.
+message CompleteUploadRequest {
+  // Upload identifies the upload that should be completed.
+  Upload upload = 1;
+  // Parts are the part indices and resulting e-tags of uploaded parts.
+  repeated UploadPartResponse parts = 3;
+}
+
+// CompleteUploadResponse
+message CompleteUploadResponse {}
 ```
 
 ### Session Recording Modes
@@ -329,16 +375,18 @@ This design relies on a few different types of keys.
 
 - File keys generated by `age`. These are per-file data keys used during
   symmetric encryption and decryption of recording data.
-- `Identity` and `Recipient` keys used by `age` to wrap and unwrap file keys.
-  These are software generated, asymmetric `X25519` keypairs.
-- `RSA2048` keypairs owned by HSM/KMS keystores. These are used to wrap and
-  unwrap `Identity` keys. "Wrapping" in the context of this document refers to
-  software OAEP encryption using `RSA2048` public keys and `SHA256` hashes.
-  "Unwrapping" refers to OAEP decryption through direct integration with an HSM
-  or KMS. Integrating with keystore backends in this way allows for proxy and
-  host nodes to use the easily accessible `Recipient` keys during encryption
-  instead of requiring access to any of the key material managed by the
-  keystores.
+- Recording encryption key pairs (REK) used by `age` while encrypting recording
+  data. These are software `X25519` key pairs as generated by `age` and are
+  also referred to as `Identity` (private) and `Recipient` (public) keys.
+- Key encryption key pairs (KEK) used for OAEP encrypting (wrapping) a
+  recording encryption key pair. This document proposes using `RSA2048` key
+  pairs with `SHA256` hash for all wrapping and unwrapping operations.
+
+This allows supported HSM/KMS keystore backends to control private key material
+as long as they can generate an OAEP compatible key pair. It also makes it
+possible for new key store configurations to join the cluster by re-encrypting
+the historical key encryption pairs rather than all of the recording data
+itself.
 
 The relationships between key types is shown in the diagram below and further
 explained throughout the rest of the document.
@@ -385,19 +433,16 @@ for unwrapping filekeys                     Encrypted identity retrievable
 
 ### Key Generation
 
-To simplify integration with different HSM/KMS systems, the keypair used for
-data encryption through `age` will be a software generated `X25519` keypair.
-For the rest of this section I will refer to the public key as the `Recipient`
-and the private key as the `Identity` in keeping with `age` terminology.
+Initial key generation will be handled by the first auth server to acquire a
+lock on on the `recording_encryption` resource. It will first generate a REK
+using `age` as described above. It will then use the configured CA keystore to
+generate an `RSA` KEK which will be used to wrap the REK private key. The KEK
+pair, REK public key, and wrapped REK private key are then added as a new entry
+to the `recording_encryption.spec.active_keys` list as a `WrappedKey`.
 
-The auth server generating the keys will then use the configured CA keystore to
-generate an `RSA` keypair used to wrap the `Identity`. Once encrypted, the
-`Recipient`, wrapped `Identity`, and wrapping keypair are added as a new entry
-to the `recording_encryption.spec.active_keys` list.
-
-`RSA` key generation is already supported for signing use-cases across AWS KMS,
-GCP CKM, and PKCS#11. However we will need to add support for calling into
-their native decryption functions in order to unwrap `Identity` keys:
+`RSA2048` key generation is already supported for signing use-cases across AWS
+KMS, GCP CKM, and PKCS#11. However we will need to add support for calling into
+their native decryption functions in order to unwrap REK private keys:
 
 - AWS KMS supports setting an algorithm of `RSAES_OAEP_SHA_256` when using the
   `Decrypt` action of the KMS API.
@@ -409,20 +454,19 @@ their native decryption functions in order to unwrap `Identity` keys:
   `CKM_SHA256` mechanisms which can be passed to the `C_DecryptInit` function
   exposed by PKCS#11.
 
-In order to collaboratively generate and share the `Identity` and `Recipient`
-keys, all auth servers must create a watcher for `Put` events against the
-`RecordingEncryption` resource. Modifications to this resource will signal
-existing auth servers to investigate whether or not there is work that needs to
-be done. For example, when adding a new auth server to an environment, it will
-find that there is already an `X25519` keypair configured. It will check if any
-active keys are accessible (detailed in the next paragraph) and, in the case
-that there are none, generate a new `RSA` wrapping keypair. The new keypair
-will be added as an entry to the list of active keys but without a wrapped
-`Identity`. Any other auth server with an active key can inspect the new entry,
-unwrap their own copy of the `Identity`, and wrap it again using software OAEP
-encryption with the entry's public `RSA` key. The re-wrapped `Identity` is then
-saved as the wrapped key for the new entry and the newly added auth server will
-be able to decrypt sessions.
+In order to collaboratively generate and share the REK pair, all auth servers
+must create a watcher for `Put` events against the `recording_encryption`
+resource. Modifications to this resource will signal existing auth servers to
+investigate whether or not there is work that needs to be done. For example,
+when adding a new auth server to an environment, it will find that there is
+already a REK pair configured. It will check if any active keys are accessible
+(detailed below) and, in the case that there are none, and add an unfulfilled
+key to the active key list. An unfulfilled key is a keystore generated KEK
+without an associated REK. Any other auth server with an active wrapped key can
+inspect the unfulfilled key, unwrap their own copy of the REK private key, and
+software OAEP encrypt it using the REK public key provided by the unfulfilled
+key. The wrapped REK pair is then saved to the unfulfilled key and the auth
+server will be able to decrypt session recordings.
 
 Each time there is a change to the active keys, the set of public keys will
 also be assigned to `session_recording_config.status.encryption_keys` to be
@@ -483,81 +527,88 @@ and we would then be forced to return an error.
 
 ### Key Rotation
 
-Rotating keys used for session encryption requires rotating both the `X25519`
-keypair used with `age` and the keystore-backed wrapping keys. Because `age`
-allows us to encrypt with multiple recipients, all keys can be rotated in a
-single action.
+In order to prevent a single recording encryption key (REK) from decrypting all
+session recordings ever recorded, we will need to provide a rotation process.
+This will require exposing a new set of RPCs as previously defined in the
+recording encryption service protobuf.
 
-When an auth server receives a rotation request, it will:
+When an auth server receives a `RotateRecordingEncryptionKey` request, it will:
 
-- Generate a new `X25519` keypair.
-- Generate a new `RSA` wrapping keypair using its configured keystore.
-- Create a new `WrappedKey` using these keypairs.
-- Mark all other active keys for rotation by setting their `State` field to
-  `rotating`. This is done in place of removing all other keys in order to
-  avoid delays or failures that might come from other auth servers not having
-  immediate access to an active `WrappedKey`.
-- Replace its own active `WrappedKey` with the newly created one, marking the
-  original value's `State` as `rotated`.
+- Fetch all current keys from `recording_encryption.spec.active_keys`.
+- Generate a new REK (software `X25519` keypair).
+- For each currently active `WrappedKey`
+  - Use their KEK public key to sofware OAEP encrypt the newly generated REK
+    private key.
+  - Add a new `WrappedKey` to the active keys list made up of the original KEK
+    and the newly wrapped REK.
+- Mark all previous active keys as rotated by setting their `State` field to
+  `rotating`.
 - Apply all writes described in a single, atomic write to the backend.
 
-All other auth servers will check if their keys are marked for rotation when a
-change to the resource is picked up by their watcher. If they find their keys
-need to be rotated, they will essentially repeat the key generation steps:
+Rotated keys will remain as active keys and included as recipients during `age`
+encryption until the rotation is completed or rolled back. The completion RPC
+will shift all active keys marked as rotated into a `rotated_keys` resource
+keyed on the REK public key they're associated with. The rollback RPC will
+remove all new keys and revert the `State` of rotated keys back to `active`.
 
-- Generate a new `RSA` wrapping keypair using their configured keystore
-- Push an unfulfilled `WrappedKey` containing the `RSA` keypair and an empty
-  `WrappedPrivateKey` to the active keys list.
-- Wait for an already rotated auth server to wrap the new `X25519` private key
-  with the `RSA` public key included in the unfulfilled `WrappedKey`.
-- Confirm the unfulfilled `WrappedKey` is now complete and mark the old
-  `WrappedKey.State` as `rotated`.
+Rotating key encryption keys is a much more complex problem to solve. Below is
+a list of considerations that make it challenging to design a solution that
+solves more problems than it creates.
 
-Once all auth servers have finished rotating their keys, rotation is finished.
-This is confirmed when the `State` field of all `WrappedKeys` in the active
-keys list are set to `active` and `rotated`. Completing the rotation is a
-manual step that is only possible after a minimum amount of time has passed.
-This will emulate how CA rotations are performed.
+- All rotated REK keys associated with a rotating KEK must also be rotated, not
+  just the active keys.
+- Should rotations happen per REK? Or should all REKs be rotated at the same
+  time?
+- Due to the possibility of shared keys and keystore changes, a given KEK being
+  rotated may have to be replaced with multiple KEKs. In cases like this, how
+  do we know when the rotation is complete?
+- What happens when a REK is orphaned due to an auth server losing access or
+  being removed from the cluster? Should we allow manual deletion of keys
+  without rotation?
+- How do we make the difference between rotating different key types easy to
+  understand?
 
-It's worth noting that during the waiting period, the keys scheduled for
-rotation are still included as recipients during encryption. Which means
-actively rotating auth servers can still easily decrypt session recordings
-while waiting for a new `WrappedKey` to be generated.
+Given these complications and the fact that similar applications, such as S3,
+avoid rotating KEKs altogether, this RFD does not propose a design for this
+process at this time.
+
+It may be possible to implement a solution
 
 #### `tctl` Changes
 
-Key rotation will be handled through `tctl` using a new subcommand:
+Recording encryption key rotations will be handled through `tctl` using the
+following commands.
 
 ```bash
 tctl recordings encryption rotate
 ```
 
-It will issue a request to the `RotateKeySet` RPC to begin the rotation. The
-status of the rotation can be queried with:
-
-```bash
-tctl recordings encryption rotate --status
-```
-
-This command issues a request to the `GetRotationState` RPC to get the list of
-key states for all active keys. Rotation is in progress if at least one key
-is marked as `rotating`. It is pending completion when all keys are marked
-as `rotated` and complete when all keys are marked as `active`.
-
-A rotation can be cancelled and rolled back using the `rollback` sub command.
-
-```bash
-tctl recordings encryption rotate rollback
-```
-
-A rotation can be completed using the `complete` subcommand.
+Issue a request to the `RotateRecordingEncryption` RPC to rotate the recording
+encryption key. This command will output a status message conveying whether or
+not rotation was successful or not.
 
 ```bash
 tctl recordings encryption rotate complete
 ```
 
-It will move all keys marked as `rotated` state to a `RotatedKeys` resource
-keyed on the recording encryption public key they all related to.
+A successful rotation can be completed using the `complete` subcommand. It will
+call the `CompleteRotation` RPC and move all keys marked as `rotated` to a new
+`RotatedKeys` resource keyed on the REK public key they relate to.
+
+```bash
+tctl recordings encryption rotate rollback
+```
+
+A rotation can be cancelled and rolled back using the `rollback` sub command.
+It will call the `RollbackRecordingEncryptionRotation` RPC which removes all
+new keys and marks all `rotated` keys as `active`.
+
+```bash
+tctl recordings encryption rotate --status
+```
+
+Including the `--status` flag issues a request to the `GetRotationState` RPC to
+return whether or not a key rotation is in progress.
 
 ### Security
 
@@ -593,7 +644,7 @@ tctl recordings encryption rotate
 ```bash
 tctl recordings encryption rotate --status
 
-"Remaining keys to rotate: 3"
+"Rotation waiting for completion"
 ```
 
 ### Teleport admin cancelling an ongoing rotation
