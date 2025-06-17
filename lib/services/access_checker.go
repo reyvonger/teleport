@@ -438,7 +438,7 @@ func (a *accessChecker) checkAllowedResources(r AccessCheckable) error {
 			// access the Kubernetes cluster that it belongs to.
 			// At this point, we do not verify that the accessed resource matches the
 			// allowed resources, but that verification happens in the caller function.
-			(resourceID.Kind == r.GetKind() || ((slices.Contains(types.KubernetesResourcesKinds, resourceID.Kind) || strings.HasPrefix(resourceID.Kind, types.PrefixKindKube)) && r.GetKind() == types.KindKubernetesCluster)) &&
+			(resourceID.Kind == r.GetKind() || ((slices.Contains(types.KubernetesResourcesKinds, resourceID.Kind) || strings.HasPrefix(resourceID.Kind, types.AccessRequestPrefixKindKube)) && r.GetKind() == types.KindKubernetesCluster)) &&
 			resourceID.Name == r.GetName() {
 			// Allowed to access this resource by resource ID, move on to role checks.
 
@@ -521,7 +521,7 @@ func (a *accessChecker) GetKubeResources(cluster types.KubeCluster) (allowed, de
 		if elem.Kind == types.KindKubeNamespace {
 			allowedResourceIDs = append(allowedResourceIDs, types.ResourceID{
 				ClusterName:     elem.ClusterName,
-				Kind:            types.PrefixKindKubeClusterWide + "namespaces",
+				Kind:            types.AccessRequestPrefixKindKubeClusterWide + "namespaces",
 				SubResourceName: elem.SubResourceName,
 				Name:            elem.Name,
 			})
@@ -537,16 +537,16 @@ func (a *accessChecker) GetKubeResources(cluster types.KubeCluster) (allowed, de
 			continue
 		}
 		switch {
-		case slices.Contains(types.KubernetesResourcesKinds, r.Kind) || strings.HasPrefix(r.Kind, types.PrefixKindKube):
+		case slices.Contains(types.KubernetesResourcesKinds, r.Kind) || strings.HasPrefix(r.Kind, types.AccessRequestPrefixKindKube):
 			namespace := ""
 			name := ""
 			// TODO(@creack): Make sure this gets handled in the AccessRequest PR.
-			if slices.Contains(types.KubernetesClusterWideResourceKinds, r.Kind) || strings.HasPrefix(r.Kind, types.PrefixKindKubeClusterWide) {
+			if slices.Contains(types.KubernetesClusterWideResourceKinds, r.Kind) || strings.HasPrefix(r.Kind, types.AccessRequestPrefixKindKubeClusterWide) {
 				// Cluster wide resources do not have a namespace.
 				name = r.SubResourceName
-				r.Kind = strings.TrimPrefix(r.Kind, types.PrefixKindKubeClusterWide)
+				r.Kind = strings.TrimPrefix(r.Kind, types.AccessRequestPrefixKindKubeClusterWide)
 			} else {
-				r.Kind = strings.TrimPrefix(r.Kind, types.PrefixKindKubeNamespaced)
+				r.Kind = strings.TrimPrefix(r.Kind, types.AccessRequestPrefixKindKubeNamespaced)
 				splitted := strings.SplitN(r.SubResourceName, "/", 3)
 				// This condition should never happen since SubResourceName is validated
 				// but it's better to validate it.

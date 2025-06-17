@@ -3463,13 +3463,13 @@ func normalizeKubernetesKind(in string) (out gk) {
 		case in == types.KindKubeNamespace:
 			out.kind = "namespaces"
 			return out
-		case strings.HasPrefix(in, types.PrefixKindKubeNamespaced):
-			out.kind = strings.TrimPrefix(in, types.PrefixKindKubeNamespaced)
-		case strings.HasPrefix(in, types.PrefixKindKubeClusterWide):
-			out.kind = strings.TrimPrefix(in, types.PrefixKindKubeClusterWide)
+		case strings.HasPrefix(in, types.AccessRequestPrefixKindKubeNamespaced):
+			out.kind = strings.TrimPrefix(in, types.AccessRequestPrefixKindKubeNamespaced)
+		case strings.HasPrefix(in, types.AccessRequestPrefixKindKubeClusterWide):
+			out.kind = strings.TrimPrefix(in, types.AccessRequestPrefixKindKubeClusterWide)
 			// Subset if the two first used in search. Must be last.
-		case strings.HasPrefix(in, types.PrefixKindKube):
-			out.kind = strings.TrimPrefix(in, types.PrefixKindKube)
+		case strings.HasPrefix(in, types.AccessRequestPrefixKindKube):
+			out.kind = strings.TrimPrefix(in, types.AccessRequestPrefixKindKube)
 		}
 	}
 	if out.group != "" { // If we have a group, we are dealing with legacy value, we have the noramlized version.

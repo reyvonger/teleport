@@ -2152,8 +2152,8 @@ func validateRequestKubeResources(roleVersion string, kubeResources []RequestKub
 
 // ClusterResource returns the resource name in the following format
 // <namespace>/<name>.
-func (k *KubernetesResource) ClusterResource() string {
-	return path.Join(k.Namespace, k.Name)
+func (m *KubernetesResource) ClusterResource() string {
+	return path.Join(m.Namespace, m.Name)
 }
 
 // IsEmpty will return true if the condition is empty.

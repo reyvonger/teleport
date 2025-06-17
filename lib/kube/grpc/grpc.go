@@ -194,7 +194,7 @@ func (s *Server) ListKubernetesResources(ctx context.Context, req *proto.ListKub
 	case requiresFakePagination(req):
 		rsp, err := s.listResourcesUsingFakePagination(ctx, req)
 		return rsp, trail.ToGRPC(err)
-	case slices.Contains(types.KubernetesResourcesKinds, req.ResourceType) || strings.HasPrefix(req.ResourceType, types.PrefixKindKube):
+	case slices.Contains(types.KubernetesResourcesKinds, req.ResourceType) || strings.HasPrefix(req.ResourceType, types.AccessRequestPrefixKindKube):
 		rsp, err := s.listKubernetesResources(ctx, true, req)
 		return rsp, trail.ToGRPC(err)
 	default:
@@ -554,7 +554,7 @@ func (s *Server) iterateKubernetesResources(
 			nextContinueKey = lItems.Continue
 		default:
 			// If we don't have a known legacy value, we expect a 'kube:' prefix.
-			if !strings.HasPrefix(req.ResourceType, types.PrefixKindKube) {
+			if !strings.HasPrefix(req.ResourceType, types.AccessRequestPrefixKindKube) {
 				return trace.BadParameter("unsupported resource type %q", resourceType)
 			}
 
@@ -565,7 +565,7 @@ func (s *Server) iterateKubernetesResources(
 				// TODO(@creack): Consider caching the discovery. Needs to be periodically invalidated.
 				// As it is only for the access request search, it is likely not heavily used and the request
 				// is between us and kube_proxy which is likely on the same host.
-				gk := schema.ParseGroupKind(strings.TrimPrefix(req.ResourceType, types.PrefixKindKube))
+				gk := schema.ParseGroupKind(strings.TrimPrefix(req.ResourceType, types.AccessRequestPrefixKindKube))
 				resourceType = gk.Kind
 				g, versions, err := lookupAPIGroupVersions(ctx, kubeClient, gk)
 				if err != nil {
@@ -629,11 +629,11 @@ func getKubernetesResourceFromKObject(
 	kObj kObject, namespaced bool,
 	resourceType string,
 ) (*types.KubernetesResourceV1, error) {
-	if strings.HasPrefix(resourceType, types.PrefixKindKube) {
+	if strings.HasPrefix(resourceType, types.AccessRequestPrefixKindKube) {
 		if namespaced {
-			resourceType = strings.Replace(resourceType, types.PrefixKindKube, types.PrefixKindKubeNamespaced, 1)
+			resourceType = strings.Replace(resourceType, types.AccessRequestPrefixKindKube, types.AccessRequestPrefixKindKubeNamespaced, 1)
 		} else {
-			resourceType = strings.Replace(resourceType, types.PrefixKindKube, types.PrefixKindKubeClusterWide, 1)
+			resourceType = strings.Replace(resourceType, types.AccessRequestPrefixKindKube, types.AccessRequestPrefixKindKubeClusterWide, 1)
 		}
 	}
 	return types.NewKubernetesResourceV1(
@@ -689,7 +689,7 @@ func (s *Server) listResourcesUsingFakePagination(
 		err error
 	)
 	switch {
-	case slices.Contains(types.KubernetesResourcesKinds, req.ResourceType) || strings.HasPrefix(req.ResourceType, types.PrefixKindKube):
+	case slices.Contains(types.KubernetesResourcesKinds, req.ResourceType) || strings.HasPrefix(req.ResourceType, types.AccessRequestPrefixKindKube):
 		rsp, err = s.listKubernetesResources(ctx, false /* do not respect the limit value */, req)
 		if err != nil {
 			return nil, trace.Wrap(err)

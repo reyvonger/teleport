@@ -1387,6 +1387,9 @@ var RequestableResourceKinds = []string{
 	KindGitServer,
 }
 
+// LegacyRequestableKubeResourceKinds lists all legacy Teleport resource kinds users can request access to.
+// Those are the requestable Kubernetes resource kinds that were supported before the introduction of
+// custom resource support. We need to keep them to maintain support with older Teleport versions.
 // TODO(@creack): Remove this list in v20.
 var LegacyRequestableKubeResourceKinds = []string{
 	KindKubePod,
@@ -1412,10 +1415,14 @@ var LegacyRequestableKubeResourceKinds = []string{
 	KindKubeIngress,
 }
 
+// Prefix constants to identify kubernetes resources in access requests.
 const (
-	PrefixKindKube            = "kube:"                // Denote that the resource is a kubernetes one. Used for access requests.
-	PrefixKindKubeClusterWide = PrefixKindKube + "cw:" // Denote that the kube resource is cluster-wide.
-	PrefixKindKubeNamespaced  = PrefixKindKube + "ns:" // Denote that the kube resource is namespaced.
+	// AccessRequestPrefixKindKube denotes that the resource is a kubernetes one. Used for access requests.
+	AccessRequestPrefixKindKube = "kube:"
+	// AccessRequestPrefixKindKubeClusterWide denotes that the kube resource is cluster-wide.
+	AccessRequestPrefixKindKubeClusterWide = AccessRequestPrefixKindKube + "cw:"
+	// AccessRequestPrefixKindKubeNamespaced denotes that the kube resource is namespaced.
+	AccessRequestPrefixKindKubeNamespaced = AccessRequestPrefixKindKube + "ns:"
 )
 
 // The list below needs to be kept in sync with `kubernetesResourceKindOptions`

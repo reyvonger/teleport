@@ -76,8 +76,8 @@ func (h *Handler) clusterKubeResourcesGet(w http.ResponseWriter, r *http.Request
 		return nil, trace.BadParameter("missing param %q", "kind")
 	}
 
-	if !slices.Contains(types.KubernetesResourcesKinds, kind) && !strings.HasPrefix(kind, types.PrefixKindKube) {
-		return nil, trace.BadParameter("kind is not valid, valid kinds %v %s<kind>", types.KubernetesResourcesKinds, types.PrefixKindKube)
+	if !slices.Contains(types.KubernetesResourcesKinds, kind) && !strings.HasPrefix(kind, types.AccessRequestPrefixKindKube) {
+		return nil, trace.BadParameter("kind is not valid, valid kinds %v %s<kind>", types.KubernetesResourcesKinds, types.AccessRequestPrefixKindKube)
 	}
 
 	clt, err := sctx.NewKubernetesServiceClient(r.Context(), h.cfg.ProxyWebAddr.Addr)

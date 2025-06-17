@@ -431,7 +431,7 @@ func onRequestSearch(cf *CLIConf) error {
 		if err != nil {
 			return trace.Wrap(err)
 		}
-		resourceType := types.PrefixKindKube + cf.kubeResourceKind
+		resourceType := types.AccessRequestPrefixKindKube + cf.kubeResourceKind
 		if cf.kubeAPIGroup != "" {
 			resourceType = resourceType + "." + cf.kubeAPIGroup
 		}

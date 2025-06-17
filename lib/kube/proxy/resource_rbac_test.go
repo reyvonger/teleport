@@ -467,7 +467,7 @@ func TestListPodRBAC(t *testing.T) {
 					WithResourceAccessRequests(
 						types.ResourceID{
 							ClusterName:     testCtx.ClusterName,
-							Kind:            types.PrefixKindKubeNamespaced + "pods",
+							Kind:            types.AccessRequestPrefixKindKubeNamespaced + "pods",
 							Name:            kubeCluster,
 							SubResourceName: fmt.Sprintf("%s/%s", metav1.NamespaceDefault, testPodName),
 						},

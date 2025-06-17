@@ -40,21 +40,21 @@ func (id *ResourceID) CheckAndSetDefaults() error {
 	if id.Kind != KindKubeNamespace && slices.Contains(KubernetesResourcesKinds, id.Kind) {
 		apiGroup := KubernetesResourcesV7KindGroups[id.Kind]
 		if slices.Contains(KubernetesClusterWideResourceKinds, id.Kind) {
-			id.Kind = PrefixKindKubeClusterWide + KubernetesResourcesKindsPlurals[id.Kind]
+			id.Kind = AccessRequestPrefixKindKubeClusterWide + KubernetesResourcesKindsPlurals[id.Kind]
 		} else {
-			id.Kind = PrefixKindKubeNamespaced + KubernetesResourcesKindsPlurals[id.Kind]
+			id.Kind = AccessRequestPrefixKindKubeNamespaced + KubernetesResourcesKindsPlurals[id.Kind]
 		}
 		if apiGroup != "" {
 			id.Kind += "." + apiGroup
 		}
 	}
 
-	if id.Kind != KindKubeNamespace && !slices.Contains(RequestableResourceKinds, id.Kind) && !strings.HasPrefix(id.Kind, PrefixKindKube) {
+	if id.Kind != KindKubeNamespace && !slices.Contains(RequestableResourceKinds, id.Kind) && !strings.HasPrefix(id.Kind, AccessRequestPrefixKindKube) {
 		return trace.BadParameter("Resource kind %q is invalid or unsupported", id.Kind)
 	}
 
 	switch {
-	case id.Kind == KindKubeNamespace || strings.HasPrefix(id.Kind, PrefixKindKube):
+	case id.Kind == KindKubeNamespace || strings.HasPrefix(id.Kind, AccessRequestPrefixKindKube):
 		return trace.Wrap(id.validateK8sSubResource())
 	case id.SubResourceName != "":
 		return trace.BadParameter("resource kind %q doesn't allow sub resources", id.Kind)
@@ -66,7 +66,7 @@ func (id *ResourceID) validateK8sSubResource() error {
 	if id.SubResourceName == "" {
 		return trace.BadParameter("resource of kind %q must include a subresource name", id.Kind)
 	}
-	isResourceClusterwide := id.Kind == KindKubeNamespace || slices.Contains(KubernetesClusterWideResourceKinds, id.Kind) || strings.HasPrefix(id.Kind, PrefixKindKubeClusterWide)
+	isResourceClusterwide := id.Kind == KindKubeNamespace || slices.Contains(KubernetesClusterWideResourceKinds, id.Kind) || strings.HasPrefix(id.Kind, AccessRequestPrefixKindKubeClusterWide)
 	switch split := strings.Split(id.SubResourceName, "/"); {
 	case isResourceClusterwide && len(split) != 1:
 		return trace.BadParameter("subresource %q must follow the following format: <name>", id.SubResourceName)
@@ -111,8 +111,8 @@ func ResourceIDFromString(raw string) (ResourceID, error) {
 	}
 
 	switch {
-	case slices.Contains(KubernetesResourcesKinds, resourceID.Kind) || strings.HasPrefix(resourceID.Kind, PrefixKindKube) || resourceID.Kind == KindKubeNamespace:
-		isResourceClusterWide := resourceID.Kind == KindKubeNamespace || slices.Contains(KubernetesClusterWideResourceKinds, resourceID.Kind) || strings.HasPrefix(resourceID.Kind, PrefixKindKubeClusterWide)
+	case slices.Contains(KubernetesResourcesKinds, resourceID.Kind) || strings.HasPrefix(resourceID.Kind, AccessRequestPrefixKindKube) || resourceID.Kind == KindKubeNamespace:
+		isResourceClusterWide := resourceID.Kind == KindKubeNamespace || slices.Contains(KubernetesClusterWideResourceKinds, resourceID.Kind) || strings.HasPrefix(resourceID.Kind, AccessRequestPrefixKindKubeClusterWide)
 		// Kubernetes forbids slashes "/" in Namespaces and Pod names, so it's safe to
 		// explode the resourceID.Name and extract the last two entries as namespace
 		// and name.

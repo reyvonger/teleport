@@ -620,8 +620,8 @@ func (k *KubernetesResourceV1) SetRevision(rev string) {
 // default values.
 func (k *KubernetesResourceV1) CheckAndSetDefaults(namespaced bool) error {
 	k.setStaticFields()
-	if !slices.Contains(KubernetesResourcesKinds, k.Kind) && !strings.HasPrefix(k.Kind, PrefixKindKube) {
-		return trace.BadParameter("invalid kind %q defined; allowed values: %v, %s<kind>", k.Kind, KubernetesResourcesKinds, PrefixKindKube)
+	if !slices.Contains(KubernetesResourcesKinds, k.Kind) && !strings.HasPrefix(k.Kind, AccessRequestPrefixKindKube) {
+		return trace.BadParameter("invalid kind %q defined; allowed values: %v, %s<kind>", k.Kind, KubernetesResourcesKinds, AccessRequestPrefixKindKube)
 	}
 	if err := k.Metadata.CheckAndSetDefaults(); err != nil {
 		return trace.Wrap(err)
@@ -752,15 +752,15 @@ type KubeResource interface {
 }
 
 // Setter/Getter to enable generics.
-func (r RequestKubernetesResource) GetAPIGroup() string       { return r.APIGroup }
-func (r KubernetesResource) GetAPIGroup() string              { return r.APIGroup }
-func (r *RequestKubernetesResource) SetAPIGroup(group string) { r.APIGroup = group }
-func (r *KubernetesResource) SetAPIGroup(group string)        { r.APIGroup = group }
-func (r RequestKubernetesResource) GetKind() string           { return r.Kind }
-func (r KubernetesResource) GetKind() string                  { return r.Kind }
-func (r *RequestKubernetesResource) SetKind(kind string)      { r.Kind = kind }
-func (r *KubernetesResource) SetKind(kind string)             { r.Kind = kind }
-func (r RequestKubernetesResource) GetNamespace() string      { return "" }
-func (r KubernetesResource) GetNamespace() string             { return r.Namespace }
-func (r *RequestKubernetesResource) SetNamespace(ns string)   {}
-func (r *KubernetesResource) SetNamespace(ns string)          { r.Namespace = ns }
+func (m RequestKubernetesResource) GetAPIGroup() string       { return m.APIGroup }
+func (m KubernetesResource) GetAPIGroup() string              { return m.APIGroup }
+func (m *RequestKubernetesResource) SetAPIGroup(group string) { m.APIGroup = group }
+func (m *KubernetesResource) SetAPIGroup(group string)        { m.APIGroup = group }
+func (m RequestKubernetesResource) GetKind() string           { return m.Kind }
+func (m KubernetesResource) GetKind() string                  { return m.Kind }
+func (m *RequestKubernetesResource) SetKind(kind string)      { m.Kind = kind }
+func (m *KubernetesResource) SetKind(kind string)             { m.Kind = kind }
+func (m RequestKubernetesResource) GetNamespace() string      { return "" }
+func (m KubernetesResource) GetNamespace() string             { return m.Namespace }
+func (m *RequestKubernetesResource) SetNamespace(ns string)   {}
+func (m *KubernetesResource) SetNamespace(ns string)          { m.Namespace = ns }

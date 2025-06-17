@@ -1778,7 +1778,7 @@ func (m *requestValidator) pruneRequestedRolesNotMatchingKubernetesResourceKinds
 	for _, resourceID := range requestedResourceIDs {
 		if resourceID.Kind == types.KindKubernetesCluster {
 			requestedKubeKinds[gk{kind: types.KindKubernetesCluster}] = struct{}{}
-		} else if slices.Contains(types.KubernetesResourcesKinds, resourceID.Kind) || strings.HasPrefix(resourceID.Kind, types.PrefixKindKube) {
+		} else if slices.Contains(types.KubernetesResourcesKinds, resourceID.Kind) || strings.HasPrefix(resourceID.Kind, types.AccessRequestPrefixKindKube) {
 			requestedKubeKinds[normalizeKubernetesKind(resourceID.Kind)] = struct{}{}
 		}
 	}
@@ -2399,7 +2399,7 @@ func (m *requestValidator) getUnderlyingResourcesByResourceIDs(ctx context.Conte
 	// requested is fulfilled by at least one role.
 	searchableResourcesIDs := slices.Clone(resourceIDs)
 	for i := range searchableResourcesIDs {
-		if slices.Contains(types.KubernetesResourcesKinds, searchableResourcesIDs[i].Kind) || strings.HasPrefix(searchableResourcesIDs[i].Kind, types.PrefixKindKube) {
+		if slices.Contains(types.KubernetesResourcesKinds, searchableResourcesIDs[i].Kind) || strings.HasPrefix(searchableResourcesIDs[i].Kind, types.AccessRequestPrefixKindKube) {
 			searchableResourcesIDs[i].Kind = types.KindKubernetesCluster
 		}
 	}
@@ -2440,16 +2440,16 @@ func getKubeResourcesFromResourceIDs(resourceIDs []types.ResourceID, clusterName
 			)
 			continue
 		}
-		if slices.Contains(types.KubernetesResourcesKinds, resourceID.Kind) || strings.HasPrefix(resourceID.Kind, types.PrefixKindKube) {
+		if slices.Contains(types.KubernetesResourcesKinds, resourceID.Kind) || strings.HasPrefix(resourceID.Kind, types.AccessRequestPrefixKindKube) {
 			kind := types.KubernetesResourcesKindsPlurals[resourceID.Kind]
 			if kind == "" {
 				kind = resourceID.Kind
 			}
-			isClusterWide := slices.Contains(types.KubernetesClusterWideResourceKinds, resourceID.Kind) || strings.HasPrefix(kind, types.PrefixKindKubeClusterWide)
+			isClusterWide := slices.Contains(types.KubernetesClusterWideResourceKinds, resourceID.Kind) || strings.HasPrefix(kind, types.AccessRequestPrefixKindKubeClusterWide)
 			if !isClusterWide {
-				kind = strings.TrimPrefix(kind, types.PrefixKindKubeNamespaced)
+				kind = strings.TrimPrefix(kind, types.AccessRequestPrefixKindKubeNamespaced)
 			} else {
-				kind = strings.TrimPrefix(kind, types.PrefixKindKubeClusterWide)
+				kind = strings.TrimPrefix(kind, types.AccessRequestPrefixKindKubeClusterWide)
 			}
 			gk := schema.ParseGroupKind(kind)
 			if gk.Group == "" {
