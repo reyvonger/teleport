@@ -752,15 +752,15 @@ type KubeResource interface {
 }
 
 // Setter/Getter to enable generics.
-func (m RequestKubernetesResource) GetAPIGroup() string       { return m.APIGroup }
-func (m KubernetesResource) GetAPIGroup() string              { return m.APIGroup }
+func (m *RequestKubernetesResource) GetAPIGroup() string      { return m.APIGroup }
+func (m *KubernetesResource) GetAPIGroup() string             { return m.APIGroup }
 func (m *RequestKubernetesResource) SetAPIGroup(group string) { m.APIGroup = group }
 func (m *KubernetesResource) SetAPIGroup(group string)        { m.APIGroup = group }
-func (m RequestKubernetesResource) GetKind() string           { return m.Kind }
-func (m KubernetesResource) GetKind() string                  { return m.Kind }
+func (m *RequestKubernetesResource) GetKind() string          { return m.Kind }
+func (m *KubernetesResource) GetKind() string                 { return m.Kind }
 func (m *RequestKubernetesResource) SetKind(kind string)      { m.Kind = kind }
 func (m *KubernetesResource) SetKind(kind string)             { m.Kind = kind }
-func (m RequestKubernetesResource) GetNamespace() string      { return "" }
-func (m KubernetesResource) GetNamespace() string             { return m.Namespace }
+func (m *RequestKubernetesResource) GetNamespace() string     { return "" }
+func (m *KubernetesResource) GetNamespace() string            { return m.Namespace }
 func (m *RequestKubernetesResource) SetNamespace(ns string)   {}
 func (m *KubernetesResource) SetNamespace(ns string)          { m.Namespace = ns }
