@@ -806,6 +806,7 @@ type Services struct {
 	services.HealthCheckConfig
 	services.BackendInfoService
 	services.VnetConfigService
+	services.Summarizer
 }
 
 // GetWebSession returns existing web session described by req.
