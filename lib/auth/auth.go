@@ -418,6 +418,13 @@ func NewServer(cfg *InitConfig, opts ...ServerOption) (*Server, error) {
 		}
 		cfg.WorkloadIdentity = workloadIdentity
 	}
+	if cfg.Summarizer == nil {
+		summarizer, err := local.NewSummarizerService(cfg.Backend)
+		if err != nil {
+			return nil, trace.Wrap(err, "creating Summarizer service")
+		}
+		cfg.Summarizer = summarizer
+	}
 	if cfg.WorkloadIdentityX509Revocations == nil {
 		cfg.WorkloadIdentityX509Revocations, err = local.NewWorkloadIdentityX509RevocationService(cfg.Backend)
 		if err != nil {
@@ -567,6 +574,7 @@ func NewServer(cfg *InitConfig, opts ...ServerOption) (*Server, error) {
 		HealthCheckConfig:               cfg.HealthCheckConfig,
 		BackendInfoService:              cfg.BackendInfo,
 		VnetConfigService:               cfg.VnetConfigService,
+		Summarizer:                      cfg.Summarizer,
 	}
 
 	as := Server{
