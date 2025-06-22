@@ -32,8 +32,8 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/gravitational/teleport"
-	"github.com/gravitational/teleport/lib/auth"
 	"github.com/gravitational/teleport/lib/client"
+	"github.com/gravitational/teleport/lib/kube/internal"
 	"github.com/gravitational/teleport/lib/utils"
 )
 
@@ -95,7 +95,7 @@ func (s *Server) buildKubeClient() error {
 
 	cfg := &rest.Config{
 		Host:      s.proxyAddress,
-		Transport: auth.NewImpersonatorRoundTripper(transport),
+		Transport: internal.NewImpersonatorRoundTripper(transport),
 	}
 
 	kubeClient, err := kubernetes.NewForConfig(cfg)
