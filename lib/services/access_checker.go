@@ -432,14 +432,7 @@ func (a *accessChecker) checkAllowedResources(r AccessCheckable) error {
 	isLoggingEnabled := rbacLogger.Enabled(ctx, logutils.TraceLevel)
 
 	for _, resourceID := range a.info.AllowedResourceIDs {
-		if resourceID.ClusterName == a.localCluster && matchesUCRResource(resourceID, r) &&
-			// If the allowed resource has `Kind=types.KindKubePod` or any other
-			// Kubernetes supported kinds - types.KubernetesResourcesKinds-, we allow the user to
-			// access the Kubernetes cluster that it belongs to.
-			// At this point, we do not verify that the accessed resource matches the
-			// allowed resources, but that verification happens in the caller function.
-			(resourceID.Kind == r.GetKind() || ((slices.Contains(types.KubernetesResourcesKinds, resourceID.Kind) || strings.HasPrefix(resourceID.Kind, types.AccessRequestPrefixKindKube)) && r.GetKind() == types.KindKubernetesCluster)) &&
-			resourceID.Name == r.GetName() {
+		if resourceID.ClusterName == a.localCluster && matchesUCRResource(resourceID, r) {
 			// Allowed to access this resource by resource ID, move on to role checks.
 
 			if isLoggingEnabled {
@@ -482,9 +475,10 @@ func matchesUCRResource(requestedR types.ResourceID, r AccessCheckable) bool {
 	// access the Kubernetes cluster that it belongs to.
 	// At this point, we do not verify that the accessed resource matches the
 	// allowed resources, but that verification happens in the caller function.
-	if slices.Contains(types.KubernetesResourcesKinds, requestedR.Kind) {
+	if slices.Contains(types.KubernetesResourcesKinds, requestedR.Kind) || strings.HasPrefix(requestedR.Kind, types.AccessRequestPrefixKindKube) {
 		return r.GetKind() == types.KindKubernetesCluster
 	}
+
 	// Identity Center account is stored as KindApp kind and
 	// KindIdentityCenterAccount subKind in the unified resource cache.
 	if requestedR.Kind == types.KindIdentityCenterAccount {
@@ -563,7 +557,6 @@ func (a *accessChecker) GetKubeResources(cluster types.KubeCluster) (allowed, de
 		case slices.Contains(types.KubernetesResourcesKinds, r.Kind) || strings.HasPrefix(r.Kind, types.AccessRequestPrefixKindKube):
 			namespace := ""
 			name := ""
-			// TODO(@creack): Make sure this gets handled in the AccessRequest PR.
 			if slices.Contains(types.KubernetesClusterWideResourceKinds, r.Kind) || strings.HasPrefix(r.Kind, types.AccessRequestPrefixKindKubeClusterWide) {
 				// Cluster wide resources do not have a namespace.
 				name = r.SubResourceName
