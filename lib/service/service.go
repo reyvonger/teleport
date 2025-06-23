@@ -2118,7 +2118,7 @@ func (process *TeleportProcess) initAuthService() error {
 		}
 	}
 
-	keyStore, err := keystore.NewManager(context.Background(), &cfg.Auth.KeyStore, keystoreOpts)
+	keyStore, err := keystore.NewManager(process.GracefulExitContext(), &cfg.Auth.KeyStore, keystoreOpts)
 	if err != nil {
 		return trace.Wrap(err)
 	}
@@ -2129,9 +2129,10 @@ func (process *TeleportProcess) initAuthService() error {
 	}
 
 	recordingEncryptionManager, err := recordingencryption.NewManager(recordingencryption.ManagerConfig{
-		Backend:  localRecordingEncryption,
-		KeyStore: keyStore,
-		Logger:   logger,
+		Backend:       localRecordingEncryption,
+		KeyStore:      keyStore,
+		Logger:        logger,
+		ClusterConfig: clusterConfig,
 		LockConfig: backend.RunWhileLockedConfig{
 			LockConfiguration: backend.LockConfiguration{
 				Backend:            process.backend,
@@ -2144,7 +2145,6 @@ func (process *TeleportProcess) initAuthService() error {
 		return trace.Wrap(err)
 	}
 
-	clusterConfig = recordingencryption.NewClusterConfigService(clusterConfig, recordingEncryptionManager)
 	var emitter apievents.Emitter
 	var streamer events.Streamer
 	var uploadHandler events.MultipartHandler
@@ -2682,18 +2682,8 @@ func (process *TeleportProcess) initAuthService() error {
 		return trace.Wrap(err)
 	})
 
-	recordingEncryptionWatchCfg := recordingencryption.WatchConfig{
-		Events:        authServer.Services,
-		Resolver:      recordingEncryptionManager,
-		ClusterConfig: authServer,
-	}
-
-	recordingEncryptionWatcher, err := recordingencryption.NewWatcher(recordingEncryptionWatchCfg)
-	if err != nil {
-		return trace.Wrap(err)
-	}
 	process.RegisterFunc("auth.recording_encryption_resolver", func() error {
-		return trace.Wrap(recordingEncryptionWatcher.Run(process.GracefulExitContext()))
+		return trace.Wrap(recordingEncryptionManager.Watch(process.GracefulExitContext(), authServer.Services))
 	})
 
 	// execute this when process is asked to exit:

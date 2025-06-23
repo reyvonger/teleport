@@ -25,7 +25,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -42,9 +41,13 @@ import (
 	"github.com/gravitational/teleport/lib/utils"
 )
 
+// ProtoStreamFlag is a bit flag containing options that were used to record the stream, such as whether or not the
+// stream was encrypted. It appears in the header of v2+ proto streams and should be used to construct the correct
+// ProtoReader configuration.
 type ProtoStreamFlag = uint8
 
 const (
+	// ProtoStreamFlagEncrypted flags whether or not a stream was encrypted during recording.
 	ProtoStreamFlagEncrypted = 1 << iota
 )
 
@@ -106,7 +109,7 @@ type EncryptionWrapper interface {
 
 // A DecryptionWrapper wraps a given io.Reader with decryption.
 type DecryptionWrapper interface {
-	WithDecryption(io.Reader) (io.Reader, error)
+	WithDecryption(context.Context, io.Reader) (io.Reader, error)
 }
 
 // ProtoStreamerConfig specifies configuration for the part
@@ -693,29 +696,39 @@ func (w *sliceWriter) newSlice() (*slice, error) {
 	// This buffer will be returned to the pool by slice.Close
 	buffer := w.proto.cfg.BufferPool.Get()
 	buffer.Reset()
+
+	var encrypted bool
+	var writer io.WriteCloser = &bufferCloser{Buffer: buffer}
+	if w.encrypter != nil {
+		// we want to encrypt after compression, so gzip needs to be the outermost layer
+		encryptedWriter, err := w.encrypter.WithEncryption(w.proto.completeCtx, writer)
+		if err != nil {
+			return nil, trace.Wrap(err)
+		}
+		encrypted = writer != encryptedWriter
+		writer = encryptedWriter
+	}
+
 	// reserve bytes for version header
-	buffer.Write(w.emptyHeader[:ProtoStreamV2PartHeaderSize])
+	headerSize := ProtoStreamV1PartHeaderSize
+	if encrypted {
+		headerSize = ProtoStreamV2PartHeaderSize
+	}
+	buffer.Write(w.emptyHeader[:headerSize])
 
 	err := w.proto.cfg.Uploader.ReserveUploadPart(w.proto.cancelCtx, w.proto.cfg.Upload, w.lastPartNumber)
 	if err != nil {
 		// Return the unused buffer to the pool.
 		w.proto.cfg.BufferPool.Put(buffer)
+		writer.Close()
 		return nil, trace.ConnectionProblem(err, uploaderReservePartErrorMessage)
 	}
 
-	var writer io.WriteCloser = &bufferCloser{Buffer: buffer}
-	if w.encrypter != nil {
-		// we want to encrypt after compression, so gzip needs to be the outermost layer
-		writer, err = w.encrypter.WithEncryption(w.proto.completeCtx, writer)
-		if err != nil {
-			return nil, trace.Wrap(err)
-		}
-	}
-
 	return &slice{
-		proto:  w.proto,
-		buffer: buffer,
-		writer: newGzipWriter(writer),
+		proto:     w.proto,
+		buffer:    buffer,
+		writer:    newGzipWriter(writer),
+		encrypted: encrypted,
 	}, nil
 }
 
@@ -910,6 +923,7 @@ type slice struct {
 	isLast         bool
 	lastEventIndex int64
 	eventCount     uint64
+	encrypted      bool
 }
 
 // reader returns a reader for the bytes written, no writes should be done after this
@@ -930,14 +944,19 @@ func (s *slice) reader() (io.ReadSeeker, error) {
 		s.buffer.Write(padding)
 	}
 	data := s.buffer.Bytes()
-	encrypted := slices.Equal(data[ProtoStreamV2PartHeaderSize:ProtoStreamV2PartHeaderSize+len(AgeHeader)], []byte(AgeHeader))
+	var streamVersion uint64 = ProtoStreamV1
+	var headerSize int64 = ProtoStreamV1PartHeaderSize
+	if s.encrypted {
+		streamVersion = ProtoStreamV2
+		headerSize = ProtoStreamV2PartHeaderSize
+	}
 	// when the slice was created, the first bytes were reserved
 	// for the protocol version number and size of the slice in bytes
-	binary.BigEndian.PutUint64(data[0:], ProtoStreamV2)
-	binary.BigEndian.PutUint64(data[Int64Size:], uint64(wroteBytes-ProtoStreamV2PartHeaderSize))
+	binary.BigEndian.PutUint64(data[0:], streamVersion)
+	binary.BigEndian.PutUint64(data[Int64Size:], uint64(wroteBytes-headerSize))
 	binary.BigEndian.PutUint64(data[Int64Size*2:], uint64(paddingBytes))
-	binary.BigEndian.PutUint64(data[Int64Size*3:], 0)
-	if encrypted {
+	if s.encrypted {
+		binary.BigEndian.PutUint64(data[Int64Size*3:], 0)
 		data[Int64Size*3] |= ProtoStreamFlagEncrypted
 	}
 
@@ -1127,8 +1146,7 @@ func (r *ProtoReader) Read(ctx context.Context) (apievents.AuditEvent, error) {
 		case protoReaderStateInit:
 			// read the part header that consists of the protocol version
 			// and the part size (for the V1 version of the protocol)
-			_, err := io.ReadFull(r.reader, r.sizeBytes[:Int64Size])
-			if err != nil {
+			if _, err := io.ReadFull(r.reader, r.sizeBytes[:Int64Size]); err != nil {
 				// reached the end of the stream
 				if errors.Is(err, io.EOF) {
 					r.state = protoReaderStateEOF
@@ -1141,22 +1159,19 @@ func (r *ProtoReader) Read(ctx context.Context) (apievents.AuditEvent, error) {
 				return nil, trace.BadParameter("unsupported protocol version %v", protocolVersion)
 			}
 			// read size of this gzipped part as encoded by V1 protocol version
-			_, err = io.ReadFull(r.reader, r.sizeBytes[:Int64Size])
-			if err != nil {
+			if _, err := io.ReadFull(r.reader, r.sizeBytes[:Int64Size]); err != nil {
 				return nil, r.setError(trace.ConvertSystemError(err))
 			}
 			partSize := binary.BigEndian.Uint64(r.sizeBytes[:Int64Size])
 			// read padding size (could be 0)
-			_, err = io.ReadFull(r.reader, r.sizeBytes[:Int64Size])
-			if err != nil {
+			if _, err := io.ReadFull(r.reader, r.sizeBytes[:Int64Size]); err != nil {
 				return nil, r.setError(trace.ConvertSystemError(err))
 			}
 			r.padding = int64(binary.BigEndian.Uint64(r.sizeBytes[:Int64Size]))
 
 			var encrypted bool
 			if protocolVersion > 1 {
-				_, err = io.ReadFull(r.reader, r.sizeBytes[:Int64Size])
-				if err != nil {
+				if _, err := io.ReadFull(r.reader, r.sizeBytes[:Int64Size]); err != nil {
 					return nil, r.setError(trace.ConvertSystemError(err))
 				}
 				flags := r.sizeBytes[0]
@@ -1168,7 +1183,9 @@ func (r *ProtoReader) Read(ctx context.Context) (apievents.AuditEvent, error) {
 				if r.decrypter == nil {
 					return nil, r.setError(trace.Errorf("reading encrypted protos without decrypter"))
 				}
-				reader, err = r.decrypter.WithDecryption(r.reader)
+
+				var err error
+				reader, err = r.decrypter.WithDecryption(ctx, r.reader)
 				if err != nil {
 					return nil, r.setError(trace.Wrap(err))
 				}

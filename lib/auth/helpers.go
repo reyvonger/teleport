@@ -323,7 +323,7 @@ func NewTestAuthServer(cfg TestAuthServerConfig) (*TestAuthServer, error) {
 		}
 	}
 
-	keyStore, err := keystore.NewManager(context.Background(), &cfg.KeystoreConfig, keystoreOpts)
+	keyStore, err := keystore.NewManager(ctx, &cfg.KeystoreConfig, keystoreOpts)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}

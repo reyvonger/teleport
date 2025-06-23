@@ -221,7 +221,7 @@ func NewServer(cfg *InitConfig, opts ...ServerOption) (*Server, error) {
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
-		cfg.ClusterConfiguration = recordingencryption.NewClusterConfigService(clusterConfig, cfg.RecordingEncryption)
+		cfg.ClusterConfiguration = clusterConfig
 	}
 	if cfg.KeyStore == nil {
 		keystoreOpts := &keystore.Options{
@@ -255,16 +255,16 @@ func NewServer(cfg *InitConfig, opts ...ServerOption) (*Server, error) {
 		}
 
 		recordingEncryptionManager, err := recordingencryption.NewManager(recordingencryption.ManagerConfig{
-			Backend:  localRecordingEncryption,
-			KeyStore: cfg.KeyStore,
-			Logger:   cfg.Logger,
+			Backend:       localRecordingEncryption,
+			ClusterConfig: cfg.ClusterConfiguration,
+			KeyStore:      cfg.KeyStore,
+			Logger:        cfg.Logger,
 		})
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
 
 		cfg.RecordingEncryption = recordingEncryptionManager
-		cfg.ClusterConfiguration = recordingencryption.NewClusterConfigService(cfg.ClusterConfiguration, recordingEncryptionManager)
 	}
 	if cfg.AutoUpdateService == nil {
 		cfg.AutoUpdateService, err = local.NewAutoUpdateService(cfg.Backend)

@@ -45,6 +45,7 @@ import (
 	autoupdatev1pb "github.com/gravitational/teleport/api/gen/proto/go/teleport/autoupdate/v1"
 	clusterconfigpb "github.com/gravitational/teleport/api/gen/proto/go/teleport/clusterconfig/v1"
 	machineidv1pb "github.com/gravitational/teleport/api/gen/proto/go/teleport/machineid/v1"
+	recordingencryptionv1pb "github.com/gravitational/teleport/api/gen/proto/go/teleport/recordingencryption/v1"
 	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/api/types/clusterconfig"
 	apievents "github.com/gravitational/teleport/api/types/events"
@@ -90,8 +91,8 @@ type VersionStorage interface {
 // operations.
 type RecordingEncryptionManager interface {
 	services.RecordingEncryption
-	recordingencryption.Resolver
 	recordingencryption.DecryptionKeyFinder
+	ResolveRecordingEncryption(ctx context.Context) (*recordingencryptionv1pb.RecordingEncryption, error)
 }
 
 // InitConfig is auth server init config

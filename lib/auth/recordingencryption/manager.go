@@ -300,12 +300,8 @@ func (m *Manager) searchActiveKeys(ctx context.Context, activeKeys []*recordinge
 			continue
 		}
 
-		// TODO (eriktate): this is a bit of a hack to allow encryption to work while the public key isn't retrievable
-		// from the age header
-		if publicKey != nil {
-			if !slices.Equal(key.RecordingEncryptionPair.PublicKey, publicKey) {
-				continue
-			}
+		if !slices.Equal(key.RecordingEncryptionPair.PublicKey, publicKey) {
+			continue
 		}
 
 		decrypter, err := m.keyStore.GetDecrypter(ctx, key.KeyEncryptionPair)
@@ -329,8 +325,7 @@ func (m *Manager) searchActiveKeys(ctx context.Context, activeKeys []*recordinge
 }
 
 // FindDecryptionKey returns the first accessible decryption key that matches one of the given public keys.
-func (m *Manager) FindDecryptionKey(publicKeys ...[]byte) (*types.EncryptionKeyPair, error) {
-	ctx := context.Background()
+func (m *Manager) FindDecryptionKey(ctx context.Context, publicKeys ...[]byte) (*types.EncryptionKeyPair, error) {
 	encryption, err := m.GetRecordingEncryption(ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)

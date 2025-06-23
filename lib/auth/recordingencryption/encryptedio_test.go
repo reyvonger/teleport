@@ -56,7 +56,7 @@ func TestEncryptedIO(t *testing.T) {
 	err = writer.Close()
 	require.NoError(t, err)
 
-	reader, err := encryptedIO.WithDecryption(out)
+	reader, err := encryptedIO.WithDecryption(ctx, out)
 	require.NoError(t, err)
 
 	plaintext, err := io.ReadAll(reader)

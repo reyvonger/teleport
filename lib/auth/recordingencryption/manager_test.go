@@ -305,21 +305,21 @@ func TestFindDecryptionKeyFromActiveKeys(t *testing.T) {
 	pubKey := activeKeys[0].RecordingEncryptionPair.PublicKey
 
 	// fail to find private key for manager B because it is waiting for key fulfillment
-	_, err = managerB.FindDecryptionKey(pubKey)
+	_, err = managerB.FindDecryptionKey(ctx, pubKey)
 	require.Error(t, err)
 
 	_, err = managerA.ResolveRecordingEncryption(ctx)
 	require.NoError(t, err)
 
 	// find private key for manager A because it provisioned the key
-	decryptionPair, err := managerA.FindDecryptionKey(pubKey)
+	decryptionPair, err := managerA.FindDecryptionKey(ctx, pubKey)
 	require.NoError(t, err)
 	ident, err := age.ParseX25519Identity(string(decryptionPair.PrivateKey))
 	require.NoError(t, err)
 	require.Equal(t, ident.Recipient().String(), string(pubKey))
 
 	// find private key for manager B after fulfillment
-	decryptionPair, err = managerB.FindDecryptionKey(pubKey)
+	decryptionPair, err = managerB.FindDecryptionKey(ctx, pubKey)
 	require.NoError(t, err)
 	ident, err = age.ParseX25519Identity(string(decryptionPair.PrivateKey))
 	require.NoError(t, err)

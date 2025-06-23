@@ -68,12 +68,12 @@ func (e *EncryptedIO) WithEncryption(ctx context.Context, writer io.WriteCloser)
 // WithDecryption wraps the given io.Reader with decryption using the recordingencryption.RecordingIdentity. This
 // will dynamically search for an accessible decryption key using the provided recordingencryption.DecryptionKeyFinder
 // in order to perform decryption
-func (e *EncryptedIO) WithDecryption(reader io.Reader) (io.Reader, error) {
+func (e *EncryptedIO) WithDecryption(ctx context.Context, reader io.Reader) (io.Reader, error) {
 	if e.keyFinder == nil {
 		return reader, nil
 	}
 
-	ident := NewRecordingIdentity(e.keyFinder)
+	ident := NewRecordingIdentity(ctx, e.keyFinder)
 	r, err := age.Decrypt(reader, ident)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -112,10 +112,35 @@ func (s *EncryptionWrapper) WithEncryption(ctx context.Context, writer io.WriteC
 		recipients = append(recipients, recipient)
 	}
 
-	w, err := age.Encrypt(writer, recipients...)
-	if err != nil {
-		return nil, trace.Wrap(err)
+	return &ageWriter{
+		w:          writer,
+		recipients: recipients,
+	}, nil
+}
+
+// ageWriter defers initializing the age encrypter to the first write so we can
+// prevent age from immediately writing the header
+type ageWriter struct {
+	w           io.WriteCloser
+	recipients  []age.Recipient
+	initialized bool
+}
+
+// Write data using age encryption, initializing the encrypter if needed
+func (a *ageWriter) Write(data []byte) (int, error) {
+	if !a.initialized {
+		w, err := age.Encrypt(a.w, a.recipients...)
+		if err != nil {
+			return 0, trace.Wrap(err)
+		}
+		a.w = w
+		a.initialized = true
 	}
 
-	return w, nil
+	return a.w.Write(data)
+}
+
+// Close flushes any buffered encrypted data and closes the underlying io.WriteCloser
+func (a *ageWriter) Close() error {
+	return a.w.Close()
 }

@@ -229,14 +229,13 @@ func TestReadCorruptedRecording(t *testing.T) {
 }
 
 func TestEncryptedRecordingIO(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 
 	uploader := eventstest.NewMemoryUploader()
 	encryptedIO := &fakeEncryptedIO{}
 	streamer, err := events.NewProtoStreamer(events.ProtoStreamerConfig{
-		Uploader: uploader,
-
+		Uploader:  uploader,
 		Encrypter: encryptedIO,
 	})
 	require.NoError(t, err)
@@ -279,7 +278,7 @@ func TestEncryptedRecordingIO(t *testing.T) {
 	}
 
 	out := fakeWriterAt{
-		buf: bytes.NewBuffer(nil),
+		buf: &bytes.Buffer{},
 	}
 	err = uploader.Download(ctx, sid, out)
 	require.NoError(t, err)
@@ -343,7 +342,7 @@ func (f *fakeEncryptedIO) WithEncryption(ctx context.Context, writer io.WriteClo
 	return encrypter, f.err
 }
 
-func (f *fakeEncryptedIO) WithDecryption(reader io.Reader) (io.Reader, error) {
+func (f *fakeEncryptedIO) WithDecryption(ctx context.Context, reader io.Reader) (io.Reader, error) {
 	header := make([]byte, len(events.AgeHeader))
 	if _, err := reader.Read(header); err != nil {
 		return nil, fmt.Errorf("reading age header: %w", err)
