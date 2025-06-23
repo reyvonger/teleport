@@ -26,6 +26,7 @@ import (
 	"iter"
 	"log/slog"
 	"slices"
+	"time"
 
 	"filippo.io/age"
 	"github.com/gravitational/trace"
@@ -33,6 +34,7 @@ import (
 	"github.com/gravitational/teleport"
 	recordingencryptionv1 "github.com/gravitational/teleport/api/gen/proto/go/teleport/recordingencryption/v1"
 	"github.com/gravitational/teleport/api/types"
+	"github.com/gravitational/teleport/api/utils/retryutils"
 	"github.com/gravitational/teleport/lib/backend"
 	"github.com/gravitational/teleport/lib/cryptosuites"
 	"github.com/gravitational/teleport/lib/services"
@@ -333,6 +335,111 @@ func (m *Manager) FindDecryptionKey(ctx context.Context, publicKeys ...[]byte) (
 	}
 
 	return nil, trace.NotFound("no accessible decryption key found")
+}
+
+func (m *Manager) Watch(ctx context.Context, events types.Events) (err error) {
+	// shouldRetryAfterJitterFn waits at most 5 seconds and returns a bool specifying whether or not
+	// execution should continue
+	shouldRetryAfterJitterFn := func() bool {
+		select {
+		case <-time.After(retryutils.SeventhJitter(time.Second * 5)):
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	defer func() {
+		m.logger.InfoContext(ctx, "stopping encryption watcher", "error", err)
+	}()
+
+	for {
+		watch, err := events.NewWatcher(ctx, types.Watch{
+			Name: "recording_encryption_watcher",
+			Kinds: []types.WatchKind{
+				{
+					Kind: types.KindRecordingEncryption,
+				},
+				{
+					Kind: types.KindSessionRecordingConfig,
+				},
+			},
+		})
+		if err != nil {
+			m.logger.ErrorContext(ctx, "failed to create watcher, retrying", "error", err)
+			if !shouldRetryAfterJitterFn() {
+				return nil
+			}
+			continue
+		}
+		defer watch.Close()
+
+	HandleEvents:
+		for {
+			select {
+			case ev := <-watch.Events():
+				if err := m.handleEvent(ctx, ev, shouldRetryAfterJitterFn); err != nil {
+					m.logger.ErrorContext(ctx, "failure handling recording encryption event", "kind", ev.Resource.GetKind(), "error", err)
+				}
+			case <-watch.Done():
+				if err := watch.Error(); err == nil {
+					return nil
+				}
+
+				m.logger.ErrorContext(ctx, "watcher failed, retrying", "error", err)
+				if !shouldRetryAfterJitterFn() {
+					return nil
+				}
+				break HandleEvents
+			case <-ctx.Done():
+				return nil
+			}
+
+		}
+	}
+}
+
+func (m *Manager) handleEvent(ctx context.Context, ev types.Event, shouldRetryFn func() bool) error {
+	if ev.Type != types.OpPut {
+		return nil
+	}
+
+	kind := ev.Resource.GetKind()
+	for {
+		switch kind {
+		case types.KindRecordingEncryption:
+			if _, err := m.ResolveRecordingEncryption(ctx); err != nil {
+				m.logger.ErrorContext(ctx, "failed to resolve recording encryption keys, retrying", "error", err)
+				if shouldRetryFn() {
+					continue
+				}
+
+				return trace.Wrap(err)
+			}
+		case types.KindSessionRecordingConfig:
+			previousConfig := m.sessionRecordingConfig
+			var err error
+			m.sessionRecordingConfig, err = m.GetSessionRecordingConfig(ctx)
+			if err != nil {
+				m.logger.ErrorContext(ctx, "failed to fetch updated session_recording_config", "error", err)
+				if shouldRetryFn() {
+					continue
+				}
+
+				return trace.Wrap(err)
+			}
+
+			if m.sessionRecordingConfig.GetEncrypted() && (previousConfig == nil || !previousConfig.GetEncrypted()) {
+
+				// restart the loop and resolve recording encryption if
+				// encryption was just enabled
+				kind = types.KindRecordingEncryption
+				continue
+			}
+		}
+
+		return nil
+	}
 }
 
 // getAgeEncryptionKeys returns an iterator of AgeEncryptionKeys from a list of WrappedKeys. This is for use in

@@ -240,11 +240,11 @@ func TestResolveRecordingEncryptionConcurrent(t *testing.T) {
 	serviceC, err := recordingencryption.NewManager(configC)
 	require.NoError(t, err)
 
-	resolveFn := func(service recordingencryption.Resolver, wg *sync.WaitGroup) {
+	resolveFn := func(manager *recordingencryption.Manager, wg *sync.WaitGroup) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := service.ResolveRecordingEncryption(ctx)
+			_, err := manager.ResolveRecordingEncryption(ctx)
 			require.NoError(t, err)
 		}()
 	}
