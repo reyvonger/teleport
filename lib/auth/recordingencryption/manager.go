@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"iter"
 	"log/slog"
 	"slices"
 
@@ -45,19 +46,21 @@ type KeyStore interface {
 
 // ManagerConfig captures all of the dependencies required to instantiate a Manager.
 type ManagerConfig struct {
-	Backend    services.RecordingEncryption
-	KeyStore   KeyStore
-	Logger     *slog.Logger
-	LockConfig backend.RunWhileLockedConfig
+	Backend       services.RecordingEncryption
+	ClusterConfig services.ClusterConfigurationInternal
+	KeyStore      KeyStore
+	Logger        *slog.Logger
+	LockConfig    backend.RunWhileLockedConfig
 }
 
 // NewManager returns a new Manager using the given ManagerConfig.
 func NewManager(cfg ManagerConfig) (*Manager, error) {
-	if cfg.Backend == nil {
+	switch {
+	case cfg.Backend == nil:
 		return nil, trace.BadParameter("backend is required")
-	}
-
-	if cfg.KeyStore == nil {
+	case cfg.ClusterConfig == nil:
+		return nil, trace.BadParameter("cluster config is required")
+	case cfg.KeyStore == nil:
 		return nil, trace.BadParameter("key store is required")
 	}
 
@@ -66,10 +69,12 @@ func NewManager(cfg ManagerConfig) (*Manager, error) {
 	}
 
 	return &Manager{
-		RecordingEncryption: cfg.Backend,
-		keyStore:            cfg.KeyStore,
-		lockConfig:          cfg.LockConfig,
-		logger:              cfg.Logger,
+		RecordingEncryption:          cfg.Backend,
+		ClusterConfigurationInternal: cfg.ClusterConfig,
+
+		keyStore:   cfg.KeyStore,
+		lockConfig: cfg.LockConfig,
+		logger:     cfg.Logger,
 	}, nil
 }
 
@@ -78,10 +83,12 @@ func NewManager(cfg ManagerConfig) (*Manager, error) {
 // state and searching for accessible decryption keys.
 type Manager struct {
 	services.RecordingEncryption
+	services.ClusterConfigurationInternal
 
-	logger     *slog.Logger
-	lockConfig backend.RunWhileLockedConfig
-	keyStore   KeyStore
+	logger                 *slog.Logger
+	lockConfig             backend.RunWhileLockedConfig
+	keyStore               KeyStore
+	sessionRecordingConfig types.SessionRecordingConfig
 }
 
 // ensureActiveRecordingEncryption returns the configured RecordingEncryption resource if it exists with active keys. If it does not,
@@ -189,15 +196,31 @@ func (m *Manager) getRecordingEncryptionKeyPair(ctx context.Context, keys []*rec
 // recording encryption key pairs) will be fulfilled using their public key encryption keys.
 //
 // If there are no unfulfilled keys present, then nothing should be done.
-func (m *Manager) ResolveRecordingEncryption(ctx context.Context, postProcessFn func(context.Context, *recordingencryptionv1.RecordingEncryption) error) (encryption *recordingencryptionv1.RecordingEncryption, err error) {
+func (m *Manager) ResolveRecordingEncryption(ctx context.Context) (encryption *recordingencryptionv1.RecordingEncryption, err error) {
 	err = backend.RunWhileLocked(ctx, m.lockConfig, func(ctx context.Context) error {
+		if m.sessionRecordingConfig == nil {
+			m.sessionRecordingConfig, err = m.GetSessionRecordingConfig(ctx)
+			if err != nil {
+				return trace.Wrap(err)
+			}
+		}
+
+		if !m.sessionRecordingConfig.GetEncrypted() {
+			m.logger.DebugContext(ctx, "session recording encryption disabled, skip resolving keys")
+			return nil
+		}
+
 		encryption, err = m.resolveRecordingEncryption(ctx)
 		if err != nil {
 			return err
 		}
-		if postProcessFn != nil {
-			return postProcessFn(ctx, encryption)
+
+		if m.sessionRecordingConfig.SetEncryptionKeys(getAgeEncryptionKeys(encryption.GetSpec().ActiveKeys)) {
+			if _, err := m.UpdateSessionRecordingConfig(ctx, m.sessionRecordingConfig); err != nil {
+				return trace.Wrap(err)
+			}
 		}
+
 		return nil
 	})
 	return encryption, trace.Wrap(err)
@@ -310,4 +333,22 @@ func (m *Manager) FindDecryptionKey(ctx context.Context, publicKeys ...[]byte) (
 	}
 
 	return nil, trace.NotFound("no accessible decryption key found")
+}
+
+// getAgeEncryptionKeys returns an iterator of AgeEncryptionKeys from a list of WrappedKeys. This is for use in
+// populating the EncryptionKeys field of SessionRecordingConfigStatus.
+func getAgeEncryptionKeys(keys []*recordingencryptionv1.WrappedKey) iter.Seq[*types.AgeEncryptionKey] {
+	return func(yield func(*types.AgeEncryptionKey) bool) {
+		for _, key := range keys {
+			if key.RecordingEncryptionPair == nil {
+				continue
+			}
+
+			if !yield(&types.AgeEncryptionKey{
+				PublicKey: key.RecordingEncryptionPair.PublicKey,
+			}) {
+				return
+			}
+		}
+	}
 }

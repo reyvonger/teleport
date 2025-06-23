@@ -32,14 +32,12 @@ import (
 	"github.com/jonboulle/clockwork"
 	"github.com/stretchr/testify/require"
 
-	recordingencryptionv1 "github.com/gravitational/teleport/api/gen/proto/go/teleport/recordingencryption/v1"
 	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/api/utils/keys"
 	"github.com/gravitational/teleport/lib/auth/recordingencryption"
 	"github.com/gravitational/teleport/lib/backend"
 	"github.com/gravitational/teleport/lib/backend/memory"
 	"github.com/gravitational/teleport/lib/cryptosuites"
-	"github.com/gravitational/teleport/lib/services"
 	"github.com/gravitational/teleport/lib/services/local"
 	"github.com/gravitational/teleport/lib/utils"
 )
@@ -55,11 +53,11 @@ func (d oaepDecrypter) Decrypt(rand io.Reader, msg []byte, opts crypto.Decrypter
 	})
 }
 
-type fakeEncryptionKeyStore struct {
+type fakeKeyStore struct {
 	keyType types.PrivateKeyType // abusing this field as a way to simulate different auth servers
 }
 
-func (f *fakeEncryptionKeyStore) NewEncryptionKeyPair(ctx context.Context, purpose cryptosuites.KeyPurpose) (*types.EncryptionKeyPair, error) {
+func (f *fakeKeyStore) NewEncryptionKeyPair(ctx context.Context, purpose cryptosuites.KeyPurpose) (*types.EncryptionKeyPair, error) {
 	decrypter, err := cryptosuites.GenerateDecrypterWithAlgorithm(cryptosuites.RSA2048)
 	if err != nil {
 		return nil, err
@@ -88,7 +86,7 @@ func (f *fakeEncryptionKeyStore) NewEncryptionKeyPair(ctx context.Context, purpo
 	}, nil
 }
 
-func (f *fakeEncryptionKeyStore) GetDecrypter(ctx context.Context, keyPair *types.EncryptionKeyPair) (crypto.Decrypter, error) {
+func (f *fakeKeyStore) GetDecrypter(ctx context.Context, keyPair *types.EncryptionKeyPair) (crypto.Decrypter, error) {
 	if keyPair.PrivateKeyType != f.keyType {
 		return nil, errors.New("could not access decrypter")
 	}
@@ -105,9 +103,9 @@ func (f *fakeEncryptionKeyStore) GetDecrypter(ctx context.Context, keyPair *type
 
 func newLocalBackend(
 	t *testing.T,
-) (context.Context, backend.Backend, services.RecordingEncryption) {
+) (context.Context, backend.Backend) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := t.Context()
 	clock := clockwork.NewRealClock()
 	mem, err := memory.New(memory.Config{
 		Context: ctx,
@@ -115,16 +113,29 @@ func newLocalBackend(
 	})
 	require.NoError(t, err)
 	bk := backend.NewSanitizer(mem)
-	service, err := local.NewRecordingEncryptionService(bk)
-	require.NoError(t, err)
-	return ctx, bk, service
+	return ctx, bk
 }
 
-func newManagerConfig(bk backend.Backend, local services.RecordingEncryption, keyType types.PrivateKeyType) recordingencryption.ManagerConfig {
+func newManagerConfig(t *testing.T, bk backend.Backend, keyType types.PrivateKeyType) recordingencryption.ManagerConfig {
+	recordingEncryptionService, err := local.NewRecordingEncryptionService(bk)
+	require.NoError(t, err)
+
+	clusterConfigService, err := local.NewClusterConfigurationService(bk)
+	require.NoError(t, err)
+
+	src := &types.SessionRecordingConfigV2{}
+	require.NoError(t, src.CheckAndSetDefaults())
+	src.Spec.Encryption = &types.SessionRecordingEncryptionConfig{
+		Enabled: true,
+	}
+	_, err = clusterConfigService.UpsertSessionRecordingConfig(t.Context(), src)
+	require.NoError(t, err)
+
 	return recordingencryption.ManagerConfig{
-		Backend:  local,
-		KeyStore: &fakeEncryptionKeyStore{keyType: keyType},
-		Logger:   utils.NewSlogLoggerForTests(),
+		Backend:       recordingEncryptionService,
+		ClusterConfig: clusterConfigService,
+		KeyStore:      &fakeKeyStore{keyType: keyType},
+		Logger:        utils.NewSlogLoggerForTests(),
 		LockConfig: backend.RunWhileLockedConfig{
 			LockConfiguration: backend.LockConfiguration{
 				Backend:            bk,
@@ -138,20 +149,24 @@ func newManagerConfig(bk backend.Backend, local services.RecordingEncryption, ke
 
 func TestResolveRecordingEncryption(t *testing.T) {
 	// SETUP
-	ctx, bk, local := newLocalBackend(t)
+	ctx, bk := newLocalBackend(t)
 
 	serviceAType := types.PrivateKeyType_RAW
 	serviceBType := types.PrivateKeyType_AWS_KMS
 
-	serviceA, err := recordingencryption.NewManager(newManagerConfig(bk, local, serviceAType))
+	configA := newManagerConfig(t, bk, serviceAType)
+	configB := configA
+	configB.KeyStore = &fakeKeyStore{serviceBType}
+
+	serviceA, err := recordingencryption.NewManager(configA)
 	require.NoError(t, err)
 
-	serviceB, err := recordingencryption.NewManager(newManagerConfig(bk, local, serviceBType))
+	serviceB, err := recordingencryption.NewManager(configB)
 	require.NoError(t, err)
 
 	// TEST
 	// CASE: service A first evaluation initializes recording encryption resource
-	encryption, err := serviceA.ResolveRecordingEncryption(ctx, nil)
+	encryption, err := serviceA.ResolveRecordingEncryption(ctx)
 	require.NoError(t, err)
 	activeKeys := encryption.GetSpec().GetActiveKeys()
 
@@ -163,7 +178,7 @@ func TestResolveRecordingEncryption(t *testing.T) {
 	require.NotNil(t, firstKey.RecordingEncryptionPair)
 
 	// CASE: service B should generate an unfulfilled key since there's an existing recording encryption resource
-	encryption, err = serviceB.ResolveRecordingEncryption(ctx, nil)
+	encryption, err = serviceB.ResolveRecordingEncryption(ctx)
 	require.NoError(t, err)
 
 	activeKeys = encryption.GetSpec().ActiveKeys
@@ -178,7 +193,7 @@ func TestResolveRecordingEncryption(t *testing.T) {
 	}
 
 	// service B re-evaluting with an unfulfilled key should do nothing
-	encryption, err = serviceB.ResolveRecordingEncryption(ctx, nil)
+	encryption, err = serviceB.ResolveRecordingEncryption(ctx)
 	require.NoError(t, err)
 	activeKeys = encryption.GetSpec().ActiveKeys
 	require.Len(t, activeKeys, 2)
@@ -192,7 +207,7 @@ func TestResolveRecordingEncryption(t *testing.T) {
 	}
 
 	// CASE: service A evaluation should fulfill service B's key
-	encryption, err = serviceA.ResolveRecordingEncryption(ctx, nil)
+	encryption, err = serviceA.ResolveRecordingEncryption(ctx)
 	require.NoError(t, err)
 	activeKeys = encryption.GetSpec().ActiveKeys
 	require.Len(t, activeKeys, 2)
@@ -204,26 +219,32 @@ func TestResolveRecordingEncryption(t *testing.T) {
 
 func TestResolveRecordingEncryptionConcurrent(t *testing.T) {
 	// SETUP
-	ctx, bk, local := newLocalBackend(t)
+	ctx, bk := newLocalBackend(t)
 
 	serviceAType := types.PrivateKeyType_RAW
 	serviceBType := types.PrivateKeyType_AWS_KMS
 	serviceCType := types.PrivateKeyType_GCP_KMS
 
-	serviceA, err := recordingencryption.NewManager(newManagerConfig(bk, local, serviceAType))
+	configA := newManagerConfig(t, bk, serviceAType)
+	configB := configA
+	configB.KeyStore = &fakeKeyStore{serviceBType}
+	configC := configA
+	configC.KeyStore = &fakeKeyStore{serviceCType}
+	recordingEncryptionService := configA.Backend
+	serviceA, err := recordingencryption.NewManager(configA)
 	require.NoError(t, err)
 
-	serviceB, err := recordingencryption.NewManager(newManagerConfig(bk, local, serviceBType))
+	serviceB, err := recordingencryption.NewManager(configB)
 	require.NoError(t, err)
 
-	serviceC, err := recordingencryption.NewManager(newManagerConfig(bk, local, serviceCType))
+	serviceC, err := recordingencryption.NewManager(configC)
 	require.NoError(t, err)
 
 	resolveFn := func(service recordingencryption.Resolver, wg *sync.WaitGroup) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := service.ResolveRecordingEncryption(ctx, nil)
+			_, err := service.ResolveRecordingEncryption(ctx)
 			require.NoError(t, err)
 		}()
 	}
@@ -234,7 +255,7 @@ func TestResolveRecordingEncryptionConcurrent(t *testing.T) {
 	resolveFn(serviceC, &wg)
 	wg.Wait()
 
-	encryption, err := local.GetRecordingEncryption(ctx)
+	encryption, err := recordingEncryptionService.GetRecordingEncryption(ctx)
 	require.NoError(t, err)
 
 	activeKeys := encryption.GetSpec().ActiveKeys
@@ -254,66 +275,29 @@ func TestResolveRecordingEncryptionConcurrent(t *testing.T) {
 
 	// only the first service to run should have a fulfilled wrapped key
 	require.Equal(t, 1, fulfilledKeys)
-	err = local.DeleteRecordingEncryption(ctx)
-	require.NoError(t, err)
-}
-
-func TestPostProcessFn(t *testing.T) {
-	ctx, bk, local := newLocalBackend(t)
-	keyType := types.PrivateKeyType_RAW
-
-	manager, err := recordingencryption.NewManager(newManagerConfig(bk, local, keyType))
-	require.NoError(t, err)
-
-	// ensure postProcessFn is called with the resolved resource
-	_, err = manager.ResolveRecordingEncryption(ctx, func(ctx context.Context, encryption *recordingencryptionv1.RecordingEncryption) error {
-		activeKeys := encryption.GetSpec().ActiveKeys
-		require.Len(t, activeKeys, 1)
-		firstKey := activeKeys[0]
-
-		// should generate a wrapped key with the initial recording encryption pair
-		require.NotNil(t, firstKey.KeyEncryptionPair)
-		require.NotNil(t, firstKey.RecordingEncryptionPair)
-		return nil
-	})
-	require.NoError(t, err)
-
-	// ensure we return the error if postProcessFn fails
-	testErr := errors.New("test error")
-	_, err = manager.ResolveRecordingEncryption(ctx, func(ctx context.Context, encryption *recordingencryptionv1.RecordingEncryption) error {
-		return testErr
-	})
-	require.ErrorIs(t, err, testErr)
-
-	_, err = manager.ResolveRecordingEncryption(ctx, func(ctx context.Context, encryption *recordingencryptionv1.RecordingEncryption) error {
-		activeKeys := encryption.GetSpec().ActiveKeys
-		require.Len(t, activeKeys, 1)
-		firstKey := activeKeys[0]
-
-		// should generate a wrapped key with the initial recording encryption pair
-		require.NotNil(t, firstKey.KeyEncryptionPair)
-		require.NotNil(t, firstKey.RecordingEncryptionPair)
-		return nil
-	})
+	err = recordingEncryptionService.DeleteRecordingEncryption(ctx)
 	require.NoError(t, err)
 }
 
 func TestFindDecryptionKeyFromActiveKeys(t *testing.T) {
 	// SETUP
-	ctx, bk, local := newLocalBackend(t)
+	ctx, bk := newLocalBackend(t)
 	keyTypeA := types.PrivateKeyType_RAW
 	keyTypeB := types.PrivateKeyType_AWS_KMS
 
-	managerA, err := recordingencryption.NewManager(newManagerConfig(bk, local, keyTypeA))
+	configA := newManagerConfig(t, bk, keyTypeA)
+	configB := configA
+	configB.KeyStore = &fakeKeyStore{keyTypeB}
+	managerA, err := recordingencryption.NewManager(configA)
 	require.NoError(t, err)
 
-	managerB, err := recordingencryption.NewManager(newManagerConfig(bk, local, keyTypeB))
+	managerB, err := recordingencryption.NewManager(configB)
 	require.NoError(t, err)
 
-	_, err = managerA.ResolveRecordingEncryption(ctx, nil)
+	_, err = managerA.ResolveRecordingEncryption(ctx)
 	require.NoError(t, err)
 
-	encryption, err := managerB.ResolveRecordingEncryption(ctx, nil)
+	encryption, err := managerB.ResolveRecordingEncryption(ctx)
 	require.NoError(t, err)
 
 	activeKeys := encryption.GetSpec().ActiveKeys
@@ -324,7 +308,7 @@ func TestFindDecryptionKeyFromActiveKeys(t *testing.T) {
 	_, err = managerB.FindDecryptionKey(ctx, pubKey)
 	require.Error(t, err)
 
-	_, err = managerA.ResolveRecordingEncryption(ctx, nil)
+	_, err = managerA.ResolveRecordingEncryption(ctx)
 	require.NoError(t, err)
 
 	// find private key for manager A because it provisioned the key

@@ -18,7 +18,6 @@ package recordingencryption
 
 import (
 	"context"
-	"iter"
 	"log/slog"
 	"time"
 
@@ -28,31 +27,28 @@ import (
 	recordingencryptionv1 "github.com/gravitational/teleport/api/gen/proto/go/teleport/recordingencryption/v1"
 	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/api/utils/retryutils"
-	"github.com/gravitational/teleport/lib/services"
 )
 
 // Resolver resolves RecordingEncryption state and passes the result to a postProcessFn callback to be called
 // before any locks are released.
 type Resolver interface {
-	ResolveRecordingEncryption(ctx context.Context, postProcessFn func(context.Context, *recordingencryptionv1.RecordingEncryption) error) (*recordingencryptionv1.RecordingEncryption, error)
+	ResolveRecordingEncryption(ctx context.Context) (*recordingencryptionv1.RecordingEncryption, error)
 }
 
 // WatchConfig captures required dependencies for building a RecordingEncryption watcher that
 // automatically resolves state.
 type WatchConfig struct {
-	Events        types.Events
-	Resolver      Resolver
-	ClusterConfig services.ClusterConfiguration
-	Logger        *slog.Logger
+	Events   types.Events
+	Resolver Resolver
+	Logger   *slog.Logger
 }
 
 // A Watcher watches for changes to the RecordingEncryption resource and resolves the state for the calling
 // auth server.
 type Watcher struct {
-	events        types.Events
-	resolver      Resolver
-	clusterConfig services.ClusterConfiguration
-	logger        *slog.Logger
+	events   types.Events
+	resolver Resolver
+	logger   *slog.Logger
 }
 
 // NewWatcher returns a new Watcher.
@@ -62,18 +58,15 @@ func NewWatcher(cfg WatchConfig) (*Watcher, error) {
 		return nil, trace.BadParameter("events is required")
 	case cfg.Resolver == nil:
 		return nil, trace.BadParameter("recording encryption resolver is required")
-	case cfg.ClusterConfig == nil:
-		return nil, trace.BadParameter("cluster config backend is required")
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.With(teleport.ComponentKey, "encryption-watcher")
 	}
 
 	return &Watcher{
-		events:        cfg.Events,
-		resolver:      cfg.Resolver,
-		clusterConfig: cfg.ClusterConfig,
-		logger:        cfg.Logger,
+		events:   cfg.Events,
+		resolver: cfg.Resolver,
+		logger:   cfg.Logger,
 	}, nil
 }
 
@@ -116,8 +109,7 @@ func (w *Watcher) Run(ctx context.Context) (err error) {
 
 	HandleEvents:
 		for {
-			err := w.handleRecordingEncryptionChange(ctx)
-			if err != nil {
+			if _, err := w.resolver.ResolveRecordingEncryption(ctx); err != nil {
 				w.logger.ErrorContext(ctx, "failure while resolving recording encryption state", "error", err)
 				if !shouldRetryAfterJitterFn() {
 					return nil
@@ -143,49 +135,6 @@ func (w *Watcher) Run(ctx context.Context) (err error) {
 				break HandleEvents
 			case <-ctx.Done():
 				return nil
-			}
-		}
-	}
-}
-
-// this helper handles reacting to individual Put events on the RecordingEncryption resource and updates the
-// SessionRecordingConfig with the results, if necessary
-func (w *Watcher) handleRecordingEncryptionChange(ctx context.Context) error {
-	recConfig, err := w.clusterConfig.GetSessionRecordingConfig(ctx)
-	if err != nil {
-		return trace.Wrap(err, "fetching recording config")
-	}
-
-	if !recConfig.GetEncrypted() {
-		w.logger.DebugContext(ctx, "session recording encryption disabled, skip resolving keys")
-		return nil
-	}
-
-	_, err = w.resolver.ResolveRecordingEncryption(ctx, func(ctx context.Context, encryption *recordingencryptionv1.RecordingEncryption) error {
-		if !recConfig.SetEncryptionKeys(getAgeEncryptionKeys(encryption.GetSpec().ActiveKeys)) {
-			return nil
-		}
-
-		_, err = w.clusterConfig.UpdateSessionRecordingConfig(ctx, recConfig)
-		return trace.Wrap(err, "updating encryption keys")
-	})
-
-	if err != nil {
-		return trace.Wrap(err, "resolving recording encryption")
-	}
-
-	return nil
-}
-
-// getAgeEncryptionKeys returns an iterator of AgeEncryptionKeys from a list of WrappedKeys. This is for use in
-// populating the EncryptionKeys field of SessionRecordingConfigStatus.
-func getAgeEncryptionKeys(keys []*recordingencryptionv1.WrappedKey) iter.Seq[*types.AgeEncryptionKey] {
-	return func(yield func(*types.AgeEncryptionKey) bool) {
-		for _, key := range keys {
-			if !yield(&types.AgeEncryptionKey{
-				PublicKey: key.RecordingEncryptionPair.PublicKey,
-			}) {
-				return
 			}
 		}
 	}
