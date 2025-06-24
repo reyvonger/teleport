@@ -369,7 +369,7 @@ type defaultModules struct {
 	loadDynamicValues sync.Once
 }
 
-var teleportBuildType = BuildOSS
+var teleportBuildType = BuildEnterprise
 
 // BuildType returns build type (OSS, Community or Enterprise)
 func (p *defaultModules) BuildType() string {
@@ -378,7 +378,7 @@ func (p *defaultModules) BuildType() string {
 
 // IsEnterpriseBuild returns false for [defaultModules].
 func (p *defaultModules) IsEnterpriseBuild() bool {
-	return false
+	return true
 }
 
 // IsOSSBuild returns true for [defaultModules].
@@ -408,11 +408,29 @@ func (p *defaultModules) Features() Features {
 		AutomaticUpgrades: p.automaticUpgrades,
 		SupportType:       proto.SupportType_SUPPORT_TYPE_FREE,
 		Entitlements: map[entitlements.EntitlementKind]EntitlementInfo{
-			entitlements.App:                {Enabled: true, Limit: 0},
-			entitlements.DB:                 {Enabled: true, Limit: 0},
-			entitlements.Desktop:            {Enabled: true, Limit: 0},
-			entitlements.JoinActiveSessions: {Enabled: true, Limit: 0},
-			entitlements.K8s:                {Enabled: true, Limit: 0},
+			entitlements.App:                    {Enabled: true, Limit: 0},
+			entitlements.DB:                     {Enabled: true, Limit: 0},
+			entitlements.Desktop:                {Enabled: true, Limit: 0},
+			entitlements.JoinActiveSessions:     {Enabled: true, Limit: 0},
+			entitlements.K8s:                    {Enabled: true, Limit: 0},
+			entitlements.AccessLists:            {Enabled: true, Limit: 0},
+			entitlements.AccessMonitoring:       {Enabled: true, Limit: 0},
+			entitlements.AccessRequests:         {Enabled: true, Limit: 0},
+			entitlements.CloudAuditLogRetention: {Enabled: true, Limit: 0},
+			entitlements.DeviceTrust:            {Enabled: true, Limit: 0},
+			entitlements.ExternalAuditStorage:   {Enabled: true, Limit: 0},
+			entitlements.FeatureHiding:          {Enabled: true, Limit: 0},
+			entitlements.HSM:                    {Enabled: true, Limit: 0},
+			entitlements.Identity:               {Enabled: true, Limit: 0},
+			entitlements.MobileDeviceManagement: {Enabled: true, Limit: 0},
+			entitlements.OIDC:                   {Enabled: true, Limit: 0},
+			entitlements.OktaSCIM:               {Enabled: true, Limit: 0},
+			entitlements.OktaUserSync:           {Enabled: true, Limit: 0},
+			entitlements.Policy:                 {Enabled: true, Limit: 0},
+			entitlements.SAML:                   {Enabled: true, Limit: 0},
+			entitlements.SessionLocks:           {Enabled: true, Limit: 0},
+			entitlements.UpsellAlert:            {Enabled: true, Limit: 0},
+			entitlements.UsageReporting:         {Enabled: true, Limit: 0},
 		},
 	}
 }
@@ -490,3 +508,4 @@ func IsInsecureTestMode() bool {
 	defer flagLock.Unlock()
 	return insecureTestAllowNoSecondFactor
 }
+

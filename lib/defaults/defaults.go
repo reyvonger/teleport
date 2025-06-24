@@ -480,7 +480,7 @@ var DatabaseProtocols = []string{
 	ProtocolPostgres,
 	ProtocolMySQL,
 	ProtocolMongoDB,
-	ProtocolOracle,
+	// ProtocolOracle,
 	ProtocolCockroachDB,
 	ProtocolRedis,
 	ProtocolSnowflake,
@@ -945,3 +945,4 @@ const (
 	// creating directories.
 	DirectoryPermissions = 0o755
 )
+

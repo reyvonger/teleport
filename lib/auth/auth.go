@@ -654,7 +654,14 @@ func NewServer(cfg *InitConfig, opts ...ServerOption) (*Server, error) {
 			},
 		)
 	}
-
+	oas, err := NewOIDCAuthService(&OIDCAuthServiceConfig{
+		Auth:    &as,
+		Emitter: as.emitter,
+	})
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	as.SetOIDCService(oas)
 	if as.terraformIDTokenValidator == nil {
 		as.terraformIDTokenValidator = terraformcloud.NewIDTokenValidator(terraformcloud.IDTokenValidatorConfig{
 			Clock: as.clock,
@@ -7834,3 +7841,4 @@ func DefaultDNSNamesForRole(role types.SystemRole) []string {
 	}
 	return nil
 }
+
