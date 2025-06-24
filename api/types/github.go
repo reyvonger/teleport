@@ -341,9 +341,7 @@ func (r *GithubConnectorV3) GetUserMatchers() []string {
 // SetUserMatchers sets the set of glob patterns to narrow down which username(s) this auth connector should match
 // for identifier-first login.
 func (r *GithubConnectorV3) SetUserMatchers(userMatchers []string) {
-	if r.Spec.UserMatchers != nil {
-		r.Spec.UserMatchers = userMatchers
-	}
+	r.Spec.UserMatchers = userMatchers
 }
 
 // SetExpiry sets expiry time for the object

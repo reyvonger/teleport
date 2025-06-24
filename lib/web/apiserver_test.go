@@ -6240,10 +6240,6 @@ func TestGetUserMatchedAuthConnectors(t *testing.T) {
 			matchers: []string{"dave@example.com"},
 		},
 		{
-			name:     "oidc-question",
-			matchers: []string{"dav?@example.com"},
-		},
-		{
 			name:     "oidc-fallback",
 			matchers: []string{"*"},
 		},
@@ -6289,11 +6285,6 @@ func TestGetUserMatchedAuthConnectors(t *testing.T) {
 			expectedConnectors: []string{"saml-specific", "saml-fallback-and-explicit"},
 		},
 		{
-			name:               "question mark pattern excludes fallbacks",
-			username:           "dave@example.com",
-			expectedConnectors: []string{"oidc-specific", "oidc-question", "saml-fallback-and-explicit"},
-		},
-		{
 			name:               "mixed specific matches across connector types",
 			username:           "user@saml-company.com",
 			expectedConnectors: []string{"saml-pattern"},
@@ -6306,7 +6297,6 @@ func TestGetUserMatchedAuthConnectors(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

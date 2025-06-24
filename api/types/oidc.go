@@ -589,9 +589,7 @@ func (r *OIDCConnectorV3) GetUserMatchers() []string {
 // SetUserMatchers sets the set of glob patterns to narrow down which username(s) this auth connector should match
 // for identifier-first login.
 func (r *OIDCConnectorV3) SetUserMatchers(userMatchers []string) {
-	if r.Spec.UserMatchers != nil {
-		r.Spec.UserMatchers = userMatchers
-	}
+	r.Spec.UserMatchers = userMatchers
 }
 
 // Check returns nil if all parameters are great, err otherwise

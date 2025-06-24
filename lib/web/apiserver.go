@@ -1946,13 +1946,9 @@ type getUserMatchedAuthConnectorsResponse struct {
 
 // globMatch performs simple a simple glob-style match test on a string.
 // - '*' matches zero or more characters.
-// - '?' matches any single character.
 // It returns true if a match is detected.
 func globMatch(pattern, str string) (bool, error) {
-	pattern = regexp.QuoteMeta(pattern)
-	pattern = strings.ReplaceAll(pattern, `\*`, ".*")
-	pattern = strings.ReplaceAll(pattern, `\?`, ".")
-	pattern = "^" + pattern + "$"
+	pattern = utils.GlobToRegexp(pattern)
 	matched, err := regexp.MatchString(pattern, str)
 	return matched, trace.Wrap(err)
 }
@@ -1960,9 +1956,8 @@ func globMatch(pattern, str string) (bool, error) {
 // userMatchesConnector is a helper function to check if a user matches any of a connector's user matchers.
 func userMatchesConnector(username string, connector interface {
 	GetUserMatchers() []string
-}) (bool, bool, error) {
+}) (isMatch bool, isFallback bool, err error) {
 	matchers := connector.GetUserMatchers()
-	var isFallback bool
 	for _, pattern := range matchers {
 		matched, err := globMatch(pattern, username)
 		if err != nil {
@@ -1986,7 +1981,7 @@ func userMatchesConnector(username string, connector interface {
 }
 
 // getUserMatchedAuthConnectors returns auth connectors that match the given username.
-func (h *Handler) getUserMatchedAuthConnectors(w http.ResponseWriter, r *http.Request, params httprouter.Params) (interface{}, error) {
+func (h *Handler) getUserMatchedAuthConnectors(w http.ResponseWriter, r *http.Request, params httprouter.Params) (any, error) {
 	var req *getUserMatchedAuthConnectorsReq
 	if err := httplib.ReadJSON(r, &req); err != nil {
 		return nil, trace.Wrap(err)
