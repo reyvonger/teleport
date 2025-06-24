@@ -340,15 +340,15 @@ export const storageService = {
     return newHistory;
   },
 
-  setRememberedSSOUsername(username: string) {
+  setRememberedSsoUsername(username: string) {
     window.localStorage.setItem(KeysEnum.REMEMBERED_SSO_USERNAME, username);
   },
 
-  getRememberedSSOUsername(): string {
+  getRememberedSsoUsername(): string {
     return window.localStorage.getItem(KeysEnum.REMEMBERED_SSO_USERNAME) || '';
   },
 
-  clearRememberedSSOUsername() {
+  clearRememberedSsoUsername() {
     window.localStorage.removeItem(KeysEnum.REMEMBERED_SSO_USERNAME);
   },
 };

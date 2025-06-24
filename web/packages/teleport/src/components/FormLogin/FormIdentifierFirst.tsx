@@ -30,7 +30,7 @@ import {
 import * as Alerts from 'design/Alert';
 import ButtonSso, { guessProviderType } from 'shared/components/ButtonSso';
 import { useRefAutoFocus } from 'shared/hooks';
-import { useAsync } from 'shared/hooks/useAsync';
+import { Attempt, useAsync } from 'shared/hooks/useAsync';
 import { AuthProvider } from 'shared/services';
 
 import ResourceService from 'teleport/services/resources';
@@ -38,7 +38,7 @@ import { storageService } from 'teleport/services/storageService';
 
 import SSOButtonList from './SsoButtons';
 
-export type Props = {
+type Props = {
   onLoginWithSso(provider: AuthProvider): void;
   /**
    * onUseLocalLogin is called to switch the view to the local login form.
@@ -46,14 +46,14 @@ export type Props = {
   onUseLocalLogin(): void;
 };
 
-export default function FormIdentifierFirst({
+export function FormIdentifierFirst({
   onLoginWithSso,
   onUseLocalLogin,
 }: Props) {
-  const resourceService = new ResourceService();
+  const [resourceService] = useState(() => new ResourceService());
 
   const [rememberedUsername, setRememberedUsername] = useState<string>(
-    storageService.getRememberedSSOUsername()
+    storageService.getRememberedSsoUsername()
   );
   const [username, setUsername] = useState<string>(rememberedUsername);
   const [connectors, setConnectors] = useState<AuthProvider[]>([]);
@@ -62,8 +62,7 @@ export default function FormIdentifierFirst({
     if (rememberedUsername) {
       fetchMatchingConnectors(rememberedUsername);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [rememberedUsername]);
 
   const [fetchAttempt, fetchMatchingConnectors] = useAsync(
     useCallback(
@@ -73,7 +72,7 @@ export default function FormIdentifierFirst({
         if (connectors.length === 0) {
           if (rememberedUsername) {
             // If we have a remembered username but no connectors, we clear the remembered username.
-            storageService.clearRememberedSSOUsername();
+            storageService.clearRememberedSsoUsername();
             setRememberedUsername('');
             setUsername('');
             return;
@@ -83,13 +82,12 @@ export default function FormIdentifierFirst({
         // If there isn't a remembered username, and there is only one matching connector, we take them straight to the IdP.
         if (connectors.length === 1 && !rememberedUsername) {
           onLoginWithSso(connectors[0]);
-          storageService.setRememberedSSOUsername(username);
+          storageService.setRememberedSsoUsername(username);
           setRememberedUsername(username);
           return;
         }
-        setConnectors(connectors || []);
         setRememberedUsername(username);
-        storageService.setRememberedSSOUsername(username);
+        storageService.setRememberedSsoUsername(username);
         return;
       },
       [username]
@@ -101,103 +99,10 @@ export default function FormIdentifierFirst({
   };
 
   const onNotYou = () => {
-    storageService.clearRememberedSSOUsername();
+    storageService.clearRememberedSsoUsername();
     setUsername('');
     setRememberedUsername('');
     setConnectors([]);
-  };
-
-  const UsernamePrompt = () => {
-    const inputRef = useRefAutoFocus<HTMLInputElement>({
-      shouldFocus: true,
-    });
-
-    return (
-      <Flex
-        as="form"
-        alignItems="center"
-        justifyContent="center"
-        flexDirection="column"
-        onSubmit={e => {
-          e.preventDefault();
-          onSubmitUsername();
-        }}
-        width="100%"
-      >
-        <Text typography="h3" mb={3}>
-          Enter your username to log in with SSO
-        </Text>
-        <Input
-          ref={inputRef}
-          value={username}
-          onChange={e => setUsername(e.target.value)}
-          placeholder="Username"
-          width="80%"
-          mb={3}
-        />
-        <ButtonPrimary
-          type="submit"
-          size="medium"
-          disabled={fetchAttempt.status === 'processing' || !username.trim()}
-          width="80%"
-        >
-          Log in
-        </ButtonPrimary>
-      </Flex>
-    );
-  };
-
-  const MultipleConnectors = ({ providers }: { providers: AuthProvider[] }) => {
-    return (
-      <Flex flexDirection="column" gap={3}>
-        <Text textAlign="center">Select an SSO provider to continue.</Text>
-        {fetchAttempt.status === 'processing' && (
-          <Box textAlign="center" m={4}>
-            <Indicator delay="none" />
-          </Box>
-        )}
-        {fetchAttempt.status === 'success' && (
-          <SSOButtonList
-            providers={providers}
-            onClick={onLoginWithSso}
-            isDisabled={false}
-          />
-        )}
-        <Flex justifyContent="center">
-          <ButtonLink style={{ padding: 0 }} onClick={onNotYou}>
-            Not you? Click here.
-          </ButtonLink>
-        </Flex>
-      </Flex>
-    );
-  };
-
-  // OneConnector is the view for when there is a remembered user and only one connector for them.
-  const OneConnector = ({ provider }: { provider: AuthProvider }) => {
-    let { name, type, displayName } = provider;
-    const connectorName = displayName || name;
-    const ssoType = guessProviderType(connectorName, type);
-
-    return (
-      <Flex flexDirection="column" alignItems="center" gap={3} mt={3}>
-        <ButtonSso
-          title={`Log in with ${connectorName}`}
-          ssoType={ssoType}
-          disabled={fetchAttempt.status === 'processing'}
-          autoFocus={true}
-          onClick={e => {
-            e.preventDefault();
-            onLoginWithSso(provider);
-          }}
-        />
-        <ButtonLink
-          onClick={onNotYou}
-          disabled={fetchAttempt.status === 'processing'}
-        >
-          Not you? Click here.
-        </ButtonLink>
-      </Flex>
-    );
   };
 
   return (
@@ -207,7 +112,12 @@ export default function FormIdentifierFirst({
       )}
       {!rememberedUsername ? (
         <>
-          <UsernamePrompt />
+          <UsernamePrompt
+            onSubmitUsername={onSubmitUsername}
+            username={username}
+            setUsername={setUsername}
+            fetchAttempt={fetchAttempt}
+          />
           <ButtonLink
             mt={3}
             onClick={onUseLocalLogin}
@@ -221,8 +131,145 @@ export default function FormIdentifierFirst({
           Welcome back, {username}
         </Text>
       )}
-      {connectors.length === 1 && <OneConnector provider={connectors[0]} />}
-      {connectors.length > 1 && <MultipleConnectors providers={connectors} />}
+      {connectors.length === 1 && (
+        <OneConnector
+          provider={connectors[0]}
+          onLoginWithSso={onLoginWithSso}
+          onNotYou={onNotYou}
+          fetchAttempt={fetchAttempt}
+        />
+      )}
+      {connectors.length > 1 && (
+        <MultipleConnectors
+          providers={connectors}
+          onLoginWithSso={onLoginWithSso}
+          onNotYou={onNotYou}
+          fetchAttempt={fetchAttempt}
+        />
+      )}
+    </Flex>
+  );
+}
+
+function UsernamePrompt({
+  onSubmitUsername,
+  username,
+  setUsername,
+  fetchAttempt,
+}: {
+  onSubmitUsername(): void;
+  username: string;
+  setUsername: (username: string) => void;
+  fetchAttempt: Attempt<void>;
+}) {
+  const inputRef = useRefAutoFocus<HTMLInputElement>({
+    shouldFocus: true,
+  });
+
+  return (
+    <Flex
+      as="form"
+      alignItems="center"
+      justifyContent="center"
+      flexDirection="column"
+      onSubmit={e => {
+        e.preventDefault();
+        onSubmitUsername();
+      }}
+      width="100%"
+    >
+      <Text typography="h3" mb={3}>
+        Enter your username to log in with SSO
+      </Text>
+      <Input
+        ref={inputRef}
+        value={username}
+        onChange={e => setUsername(e.target.value)}
+        placeholder="Username"
+        width="80%"
+        mb={3}
+      />
+      <ButtonPrimary
+        type="submit"
+        size="medium"
+        disabled={fetchAttempt.status === 'processing' || !username.trim()}
+        width="80%"
+      >
+        Log in
+      </ButtonPrimary>
+    </Flex>
+  );
+}
+
+// OneConnector is the view for when there is a remembered user and only one connector for them.
+function OneConnector({
+  provider,
+  onLoginWithSso,
+  fetchAttempt,
+  onNotYou,
+}: {
+  provider: AuthProvider;
+  onLoginWithSso(provider: AuthProvider): void;
+  fetchAttempt: Attempt<void>;
+  onNotYou(): void;
+}) {
+  let { name, type, displayName } = provider;
+  const connectorName = displayName || name;
+  const ssoType = guessProviderType(connectorName, type);
+
+  return (
+    <Flex flexDirection="column" alignItems="center" gap={3} mt={3}>
+      <ButtonSso
+        title={`Log in with ${connectorName}`}
+        ssoType={ssoType}
+        disabled={fetchAttempt.status === 'processing'}
+        autoFocus={true}
+        onClick={e => {
+          e.preventDefault();
+          onLoginWithSso(provider);
+        }}
+      />
+      <ButtonLink
+        onClick={onNotYou}
+        disabled={fetchAttempt.status === 'processing'}
+      >
+        Not you? Click here.
+      </ButtonLink>
+    </Flex>
+  );
+}
+
+function MultipleConnectors({
+  providers,
+  onLoginWithSso,
+  onNotYou,
+  fetchAttempt,
+}: {
+  providers: AuthProvider[];
+  onLoginWithSso(provider: AuthProvider): void;
+  onNotYou(): void;
+  fetchAttempt: Attempt<void>;
+}) {
+  return (
+    <Flex flexDirection="column" gap={3}>
+      <Text textAlign="center">Select an SSO provider to continue.</Text>
+      {fetchAttempt.status === 'processing' && (
+        <Box textAlign="center" m={4}>
+          <Indicator delay="none" />
+        </Box>
+      )}
+      {fetchAttempt.status === 'success' && (
+        <SSOButtonList
+          providers={providers}
+          onClick={onLoginWithSso}
+          isDisabled={false}
+        />
+      )}
+      <Flex justifyContent="center">
+        <ButtonLink style={{ padding: 0 }} onClick={onNotYou}>
+          Not you? Click here.
+        </ButtonLink>
+      </Flex>
     </Flex>
   );
 }

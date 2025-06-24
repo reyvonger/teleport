@@ -54,7 +54,7 @@ import { UserCredentials } from 'teleport/services/auth';
 import history from 'teleport/services/history';
 
 import { PasskeyIcons } from '../Passkeys';
-import FormIdentifierFirst from './FormIdentifierFirst';
+import { FormIdentifierFirst } from './FormIdentifierFirst';
 import SSOButtonList from './SsoButtons';
 
 const allAuthTypes: PrimaryAuthType[] = ['passwordless', 'sso', 'local'];
