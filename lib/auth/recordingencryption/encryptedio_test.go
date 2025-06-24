@@ -31,18 +31,18 @@ import (
 
 func TestEncryptedIO(t *testing.T) {
 	ctx := context.Background()
-	keyStore := newFakeKeyStore()
-	ident, err := keyStore.generateIdentity()
+	keyFinder := newFakeKeyFinder()
+	ident, err := keyFinder.generateIdentity()
 	require.NoError(t, err)
 
 	srcGetter, err := newFakeSRCGetter(true, []*types.AgeEncryptionKey{
-		&types.AgeEncryptionKey{
+		{
 			PublicKey: []byte(ident.Recipient().String()),
 		},
 	})
 	require.NoError(t, err)
 
-	encryptedIO := recordingencryption.NewEncryptedIO(srcGetter, keyStore)
+	encryptedIO := recordingencryption.NewEncryptedIO(srcGetter, keyFinder)
 
 	out := bytes.NewBuffer(nil)
 	writer, err := encryptedIO.WithEncryption(ctx, &writeCloser{Writer: out})

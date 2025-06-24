@@ -23,7 +23,6 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -335,22 +334,10 @@ func (f *fakeEncryptedIO) WithEncryption(ctx context.Context, writer io.WriteClo
 		writer: hexWriter,
 	}
 
-	_, err := writer.Write([]byte(events.AgeHeader))
-	if err != nil {
-		return nil, fmt.Errorf("writing age header: %w", err)
-	}
 	return encrypter, f.err
 }
 
 func (f *fakeEncryptedIO) WithDecryption(ctx context.Context, reader io.Reader) (io.Reader, error) {
-	header := make([]byte, len(events.AgeHeader))
-	if _, err := reader.Read(header); err != nil {
-		return nil, fmt.Errorf("reading age header: %w", err)
-	}
-
-	if string(header) != events.AgeHeader {
-		return nil, errors.New("missing age header")
-	}
 	return hex.NewDecoder(reader), f.err
 }
 

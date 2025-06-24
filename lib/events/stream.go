@@ -94,9 +94,6 @@ const (
 	// of the record header, it consists of the record length
 	ProtoStreamV1RecordHeaderSize = Int32Size
 
-	// AgeHeader prefixes all encrypted recording parts
-	AgeHeader = "age-encryption.org/"
-
 	// uploaderReservePartErrorMessage error message present when
 	// `ReserveUploadPart` fails.
 	uploaderReservePartErrorMessage = "uploader failed to reserve upload part"
